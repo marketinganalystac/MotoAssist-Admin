@@ -356,19 +356,40 @@ onSnapshot(
 );
 
 // Unified persistent config cache for Gemini API Key across sessions/PCs
-let cachedGeminiApiKey = "";
+const LOCAL_KEY_FILE = path.join(process.cwd(), ".gemini-key");
+
+function loadLocalKey(): string {
+  try {
+    if (fs.existsSync(LOCAL_KEY_FILE)) {
+      return fs.readFileSync(LOCAL_KEY_FILE, "utf-8").trim();
+    }
+  } catch {}
+  return "";
+}
+
+function saveLocalKey(key: string) {
+  try {
+    fs.writeFileSync(LOCAL_KEY_FILE, key, "utf-8");
+  } catch (e: any) {
+    console.warn("No se pudo guardar la clave localmente:", e?.message);
+  }
+}
+
+let cachedGeminiApiKey = process.env.GEMINI_API_KEY || loadLocalKey();
+if (cachedGeminiApiKey) {
+  console.log("Gemini API key cargada desde archivo/env local.");
+}
+
 onSnapshot(
   doc(firestoreDb, "config", "gemini"),
   (docSnap) => {
     if (docSnap.exists()) {
       cachedGeminiApiKey = docSnap.data().apiKey || "";
       console.log("Synchronized Gemini API key loaded from Firestore.");
-    } else {
-      cachedGeminiApiKey = "";
     }
   },
   (err) => {
-    console.error("Real-time listener for 'config/gemini' document failed:", err);
+    console.warn("Firestore listener no disponible, usando clave local:", err?.message);
   }
 );
 
@@ -673,19 +694,24 @@ app.post("/api/config/gemini", async (req, res) => {
       return res.status(400).json({ error: "La clave ingresada es un marcador de posición ficticio o es demasiado corta para ser válida." });
     }
     
-    // Write directly to cloud Firestore to persist for other computers/sessions
-    const configRef = doc(firestoreDb, "config", "gemini");
-    await setDoc(configRef, { apiKey: cleanKey, updated_at: new Date().toISOString() });
-    
+    // Persistir en archivo local (siempre) y en Firestore si está disponible
+    saveLocalKey(cleanKey);
+    try {
+      const configRef = doc(firestoreDb, "config", "gemini");
+      await setDoc(configRef, { apiKey: cleanKey, updated_at: new Date().toISOString() });
+    } catch (firestoreErr: any) {
+      console.warn("Firestore no disponible, clave guardada localmente:", firestoreErr?.message);
+    }
+
     cachedGeminiApiKey = cleanKey;
-    const masked = cleanKey.length > 8 
-      ? `${cleanKey.substring(0, 8)}...${cleanKey.substring(cleanKey.length - 4)}` 
+    const masked = cleanKey.length > 8
+      ? `${cleanKey.substring(0, 8)}...${cleanKey.substring(cleanKey.length - 4)}`
       : "Configurada (Activa)";
 
     res.json({ success: true, maskedKey: masked });
   } catch (err: any) {
-    console.error("Error al persistir la clave en Firestore:", err);
-    res.status(500).json({ error: "Error al guardar la clave de API en Firestore." });
+    console.error("Error al procesar la clave:", err);
+    res.status(500).json({ error: "Error al guardar la clave de API." });
   }
 });
 
@@ -774,7 +800,7 @@ app.post("/api/config/gemini/test", async (req, res) => {
     
     const testResult = await callGoogleGemini(
       keyToTest,
-      "gemini-2.5-flash",
+      "gemini-3.5-flash",
       [{ text: "Ping. Responde únicamente con la palabra OK." }]
     );
     
@@ -884,7 +910,7 @@ Retorna un objeto JSON con los siguientes campos obligatorios.
 
     const response = await callGoogleGemini(
       apiKey,
-      "gemini-2.5-flash",
+      "gemini-3.5-flash",
       [imagePart, { text: promptText }],
       {
         type: Type.OBJECT,
