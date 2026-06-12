@@ -17,15 +17,17 @@ import {
 interface MotorizadosCatalogProps {
   motorizados: Motorizado[];
   onAddMotorizado: (newMoto: Motorizado) => void;
+  onDeleteMotorizado?: (id: string) => void;
 }
 
-export default function MotorizadosCatalog({ motorizados, onAddMotorizado }: MotorizadosCatalogProps) {
+export default function MotorizadosCatalog({ motorizados, onAddMotorizado, onDeleteMotorizado }: MotorizadosCatalogProps) {
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
   const [newNombre, setNewNombre] = useState<string>("");
   const [newTelefono, setNewTelefono] = useState<string>("");
   const [newEstado, setNewEstado] = useState<string>("Activo");
   const [newFecha, setNewFecha] = useState<string>(new Date().toISOString().split("T")[0]);
 
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [errorLocal, setErrorLocal] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -147,10 +149,24 @@ export default function MotorizadosCatalog({ motorizados, onAddMotorizado }: Mot
               </div>
             </div>
 
-            {/* ULTIMA ASISTENCIA STATUS */}
-            <div className="pt-2 border-t border-slate-100 text-[10px] text-slate-450 flex items-center gap-1.5">
-              <Clock className="h-3 w-3 text-slate-400" />
-              <span className="truncate">Último Ticket: {item.ultima_asistencia || "Ninguno"}</span>
+            {/* ULTIMA ASISTENCIA STATUS & DELETE OPTION */}
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-1.5">
+              <div className="text-[10px] text-slate-500 font-sans flex items-center gap-1.5 truncate">
+                <Clock className="h-3 w-3 text-slate-400 shrink-0" />
+                <span className="truncate">Último Ticket: {item.ultima_asistencia || "Ninguno"}</span>
+              </div>
+              {onDeleteMotorizado && (
+                <button
+                  type="button"
+                  id={`btn-delete-motorizado-${item.id}`}
+                  onClick={() => setDeleteConfirmId(item.id)}
+                  className="p-1 px-2 border border-rose-100 bg-rose-50 hover:bg-rose-100 text-rose-600 hover:text-rose-700 rounded-lg transition-all cursor-pointer flex items-center gap-1 text-[10px] font-bold"
+                  title="Eliminar motorizado"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  <span>Quitar</span>
+                </button>
+              )}
             </div>
 
           </div>
@@ -255,6 +271,51 @@ export default function MotorizadosCatalog({ motorizados, onAddMotorizado }: Mot
 
             </form>
 
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOM REACTION-BASED DELETE CONFIRMATION DIALOG FOR MOTORIZADO */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-sm w-full p-6 shadow-2xl relative my-8 text-slate-800 animate-scale-up">
+            <div className="flex gap-4 items-start">
+              <div className="bg-rose-50 text-rose-600 p-3 rounded-full border border-rose-100 shrink-0">
+                <Trash2 className="h-6 w-6" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-base font-bold text-slate-950 font-sans">
+                  ¿Eliminar Conductor?
+                </h4>
+                <p className="text-xs text-slate-500 leading-relaxed font-sans mt-2">
+                  Esta acción eliminará de inmediato al motorizado <strong className="text-slate-800">
+                    {motorizados.find(m => m.id === deleteConfirmId)?.nombre || deleteConfirmId}
+                  </strong> de la base de datos de Firestore. Las asistencias archivadas permanecerán integradas, pero no se podrán registrar nuevas asistencias con este conductor.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3 border-t border-slate-100 pt-4">
+              <button
+                id="btn-confirm-delete-moto-cancel"
+                onClick={() => setDeleteConfirmId(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                id="btn-confirm-delete-moto-execute"
+                onClick={async () => {
+                  if (onDeleteMotorizado) {
+                    await onDeleteMotorizado(deleteConfirmId);
+                  }
+                  setDeleteConfirmId(null);
+                }}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-md shadow-rose-600/10 active:scale-95 transition-all cursor-pointer"
+              >
+                Eliminar
+              </button>
+            </div>
           </div>
         </div>
       )}

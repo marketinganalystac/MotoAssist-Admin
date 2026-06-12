@@ -22,12 +22,14 @@ interface InvoiceScannerProps {
   motorizados: Motorizado[];
   currentMotorizado: string;
   onAsistenciaCreated: (newAst: Asistencia) => void;
+  onOpenConfig?: () => void;
 }
 
 export default function InvoiceScanner({
   motorizados,
   currentMotorizado,
-  onAsistenciaCreated
+  onAsistenciaCreated,
+  onOpenConfig
 }: InvoiceScannerProps) {
   // Input sources
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -50,6 +52,7 @@ export default function InvoiceScanner({
   const [processingProgress, setProcessingProgress] = useState<number>(0);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [warningText, setWarningText] = useState<string | null>(null);
 
   // Form State for manual review validation ticket
   const [showForm, setShowForm] = useState<boolean>(false);
@@ -160,6 +163,7 @@ export default function InvoiceScanner({
     setIsProcessing(true);
     setErrorText(null);
     setSuccessMsg(null);
+    setWarningText(null);
     
     // Multistep visualization timeline (Optimized for ultra-rapid and highly responsive feedback)
     const steps = [
@@ -188,7 +192,6 @@ export default function InvoiceScanner({
 
     runAnimation();
   };
-
   const executeActualOCR = async () => {
     try {
       if (!selectedImage) return;
@@ -225,14 +228,52 @@ export default function InvoiceScanner({
         total: Number(extractedData.total) || 0,
         estado: "Pendiente", // requires validation confirm
         motorizado_id: currentMotorizado || "diego_torres",
+        descripcion_servicio: [extractedData.descripcion_servicio, extractedData.descripcion_producto].filter(Boolean).join(" - "),
+        descripcion_producto: "",
         ocr_json: extractedData
       });
 
       setSuccessMsg("¡Factura procesada con IA exitosamente! Por favor revise los datos extraídos.");
       setShowForm(true);
     } catch (error: any) {
-      console.error(error);
-      setErrorText(`Error de Extracción: ${error?.message || "Servicio temporalmente no disponible"}`);
+      console.error("OCR API error detected, engaging manual-fill fallback:", error);
+      const errorMsg = error?.message || "Servicio temporalmente no disponible";
+      const isUnavailable = errorMsg.includes("503") || errorMsg.includes("demand") || errorMsg.includes("unavailable") || errorMsg.includes("limit") || errorMsg.includes("UNAVAILABLE");
+
+      // Set fallback initial fields so the user can type everything in manually instead of being entirely blocked
+      setFormData({
+        id: "",
+        fecha: new Date().toISOString().split("T")[0],
+        hora: new Date().toTimeString().slice(0, 5),
+        numero_factura: "F-NUEVA",
+        cliente: "",
+        ruc_cliente: "",
+        telefono: "",
+        direccion: "",
+        comentario: isUnavailable 
+          ? "Modo manual activado por alta demanda temporal del motor de IA Gemini (Error 503)." 
+          : `Modo manual activado debido a: ${errorMsg}`,
+        ubicacion_servicio: "",
+        vendedor: "Auditor Contable",
+        forma_pago: "Efectivo",
+        subtotal: 0,
+        itbms: 0,
+        total: 0,
+        estado: "Pendiente",
+        motorizado_id: currentMotorizado || "diego_torres",
+        descripcion_servicio: "",
+        descripcion_producto: "",
+        ocr_json: { fallback_mode: true, reason: errorMsg }
+      });
+
+      setWarningText(
+        isUnavailable 
+          ? "El motor de IA Gemini está experimentando alta demanda (Error 503). Para no interrumpir su trabajo, hemos activado el Formulario de Carga Manual para que pueda registrar los datos usted mismo directamente."
+          : `Hemos habilitado la edición del formulario manual asistido debido al siguiente error: ${errorMsg}`
+      );
+      setSuccessMsg(null);
+      setErrorText(null); // Clear errors from current visibility to let user work cleanly
+      setShowForm(true);
     } finally {
       setIsProcessing(false);
       setProcessingProgress(0);
@@ -266,6 +307,8 @@ export default function InvoiceScanner({
       total: templateInfo.total,
       estado: "Pendiente",
       motorizado_id: currentMotorizado || "diego_torres",
+      descripcion_servicio: [templateInfo.serviceDetail, templateInfo.type === "Bateria" ? "Batería Hankook NS60L" : "Servicio de Grúa Plataforma"].filter(Boolean).join(" - "),
+      descripcion_producto: "",
       ocr_json: templateInfo as any
     });
     
@@ -349,21 +392,51 @@ export default function InvoiceScanner({
       
       {/* Informative Alerts Block */}
       {errorText && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-850 px-5 py-4 rounded-xl flex items-start gap-3 text-xs font-sans">
-          <AlertCircle className="h-5 w-5 stroke-[2.5] text-rose-600 flex-shrink-0" />
-          <div>
-            <span className="font-bold block mb-0.5 text-rose-900">Operación Fallida</span>
-            {errorText}
+        <div className="bg-rose-500/10 border border-rose-500/30 text-rose-400 px-5 py-4 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs font-sans animate-fade-in">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 stroke-[2.5] text-rose-500 flex-shrink-0" />
+            <div>
+              <span className="font-bold block mb-0.5 text-white uppercase tracking-wider text-[10px]">Operación Fallida</span>
+              <p className="text-slate-300">{errorText}</p>
+            </div>
           </div>
+          {onOpenConfig && (errorText.toLowerCase().includes("api key") || errorText.toLowerCase().includes("clave") || errorText.toLowerCase().includes("400")) && (
+            <button
+              onClick={onOpenConfig}
+              className="px-3 py-1.5 bg-brand-amber hover:bg-amber-600 text-white font-extrabold uppercase text-[10px] tracking-wider rounded-lg transition-all shrink-0 cursor-pointer text-center whitespace-nowrap shadow-sm shadow-amber-500/10 font-sans"
+            >
+              Configurar Clave API
+            </button>
+          )}
+        </div>
+      )}
+
+      {warningText && (
+        <div className="bg-amber-500/10 border border-brand-amber/35 text-brand-yellow px-5 py-4 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs font-sans animate-fade-in">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 stroke-[2.5] flex-shrink-0 text-brand-amber text-glow-amber" />
+            <div>
+              <span className="font-bold block mb-0.5 text-white uppercase tracking-wider text-[10px]">Asistencia de Carga Manual Activada</span>
+              <p className="text-slate-300 leading-relaxed text-[11px]">{warningText}</p>
+            </div>
+          </div>
+          {onOpenConfig && (warningText.toLowerCase().includes("api key") || warningText.toLowerCase().includes("clave") || warningText.toLowerCase().includes("400")) && (
+            <button
+              onClick={onOpenConfig}
+              className="px-3 py-1.5 bg-brand-amber hover:bg-amber-600 text-white font-extrabold uppercase text-[10px] tracking-wider rounded-lg transition-all shrink-0 cursor-pointer text-center whitespace-nowrap shadow-sm shadow-amber-500/10 font-sans"
+            >
+              Configurar Clave API
+            </button>
+          )}
         </div>
       )}
 
       {successMsg && (
-        <div className="bg-emerald-50 border border-emerald-250 text-emerald-850 px-5 py-4 rounded-xl flex items-start gap-3 text-xs font-sans animate-fade-in">
-          <CheckCircle2 className="h-5 w-5 stroke-[2.5] flex-shrink-0 text-emerald-600" />
+        <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 px-5 py-4 rounded-xl flex items-start gap-3 text-xs font-sans animate-fade-in">
+          <CheckCircle2 className="h-5 w-5 stroke-[2.5] flex-shrink-0 text-emerald-400" />
           <div>
-            <span className="font-bold block mb-0.5 text-emerald-900 font-sans">Éxito en la Operación</span>
-            {successMsg}
+            <span className="font-bold block mb-0.5 text-white uppercase tracking-wider text-[10px]">Éxito en la Operación</span>
+            <p className="text-slate-300">{successMsg}</p>
           </div>
         </div>
       )}
@@ -506,10 +579,7 @@ export default function InvoiceScanner({
               </div>
             </div>
 
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-[10px] text-left leading-relaxed text-slate-500 flex items-start gap-2.5">
-              <Database className="h-5 w-5 stroke-[2] text-amber-500 flex-shrink-0" />
-              <span>MotoAssist está utilizando Google Gemini para realizar un OCR generativo de resolución total del RUC, subtotal, ITBMS y datos del pie de página.</span>
-            </div>
+
 
           </div>
         </div>
@@ -540,7 +610,7 @@ export default function InvoiceScanner({
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6 animate-fade-in">
             
             {/* ROW 1: INFO DE FACTURA (LEFT) */}
-            <div className="md:col-span-6 space-y-4">
+            <div className={selectedImage ? "md:col-span-4 space-y-4" : "md:col-span-6 space-y-4"}>
               <h4 className="text-xs uppercase tracking-wider font-bold text-slate-400 border-l-2 border-amber-500 pl-2">
                 Información de Facturación
               </h4>
@@ -624,7 +694,7 @@ export default function InvoiceScanner({
             </div>
 
             {/* ROW 2: DATOS DEL CLIENTE (RIGHT) */}
-            <div className="md:col-span-6 space-y-4">
+            <div className={selectedImage ? "md:col-span-4 space-y-4" : "md:col-span-6 space-y-4"}>
               <h4 className="text-xs uppercase tracking-wider font-bold text-slate-400 border-l-2 border-amber-500 pl-2">
                 Datos del Cliente
               </h4>
@@ -676,7 +746,38 @@ export default function InvoiceScanner({
                 />
               </div>
 
+              <div className="space-y-1.5">
+                <label className="text-[11px] text-slate-500 font-bold font-sans block">Número de cuenta</label>
+                <input 
+                  type="text" 
+                  value={formData.ocr_json?.cuenta || ""}
+                  onChange={(e) => handleFormChange("ocr_json", { ...formData.ocr_json, cuenta: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:bg-white focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  placeholder="Número de cuenta detectado o manual..."
+                />
+              </div>
+
             </div>
+
+            {/* ORIGINAL SCANNED DOCUMENT COLUMN (RIGHT) */}
+            {selectedImage && (
+              <div className="md:col-span-4 space-y-2">
+                <h4 className="text-xs uppercase tracking-wider font-bold text-slate-400 border-l-2 border-brand-amber pl-2">
+                  Documento Original Escaneado
+                </h4>
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-2.5 flex flex-col items-center justify-center overflow-hidden h-[330px] relative group">
+                  <img
+                    src={selectedImage}
+                    alt="Factura Original"
+                    className="max-h-[310px] max-w-full rounded-xl object-contain shadow-xs transition-transform duration-300 hover:scale-[1.10] cursor-zoom-in"
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="absolute bottom-2 bg-slate-900/60 backdrop-blur-sm text-[10px] text-white font-sans px-2.5 py-1 rounded-full pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+                    Imagen de origen en verificación
+                  </div>
+                </div>
+              </div>
+            )}
 
           </div>
 
@@ -690,18 +791,18 @@ export default function InvoiceScanner({
               
               <div className="space-y-1.5">
                 <label className="text-[11px] text-slate-500 font-bold font-sans block">
-                  Descripción Técnica de Facturada (Auto-OCR)
+                  Descripción técnica, del producto o repuesto facturado
                 </label>
                 <textarea 
                   value={formData.descripcion_servicio || ""}
                   onChange={(e) => handleFormChange("descripcion_servicio", e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:bg-white focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 min-h-[60px]"
-                  placeholder="Descripción de la asistencia..."
+                  placeholder="Descripción técnica, del producto o repuesto facturado..."
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[11px] text-slate-500 font-bold font-sans block">Observación Operativa Extra / Destino de Moto</label>
+                <label className="text-[11px] text-slate-500 font-bold font-sans block">Comentarios</label>
                 <input 
                   type="text" 
                   value={formData.comentario || ""}
@@ -723,17 +824,6 @@ export default function InvoiceScanner({
                   />
                   <MapPin className="h-4 w-4 text-amber-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[11px] text-slate-500 font-bold font-sans block">Cuentas para depósito o transferencias detectado en Pie</label>
-                <input 
-                  type="text" 
-                  value={formData.ocr_json?.cuenta || ""}
-                  onChange={(e) => handleFormChange("ocr_json", { ...formData.ocr_json, cuenta: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 text-slate-505 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:bg-white focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                  placeholder="N/A"
-                />
               </div>
 
             </div>

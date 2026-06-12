@@ -17,7 +17,10 @@ import {
   FileText,
   Clock,
   Briefcase,
-  Trash2
+  Trash2,
+  Image as ImageIcon,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 
 interface TicketsTableProps {
@@ -36,6 +39,7 @@ export default function TicketsTable({ asistencias, motorizados, onDeleteAsisten
 
   // Inspect detail popup state
   const [selectedTicket, setSelectedTicket] = useState<Asistencia | null>(null);
+  const [showOriginalImage, setShowOriginalImage] = useState<boolean>(false);
 
   // Custom delete state
   const [deletingTicketId, setDeletingTicketId] = useState<string | null>(null);
@@ -89,6 +93,7 @@ export default function TicketsTable({ asistencias, motorizados, onDeleteAsisten
       "Vendedor o Cajero",
       "Forma de Pago",
       "Descripcion Tecnica del Servicio",
+      "Producto / Repuesto Facturado",
       "Subtotal Neto",
       "ITBMS (Cargos)",
       "Total Factura",
@@ -116,6 +121,7 @@ export default function TicketsTable({ asistencias, motorizados, onDeleteAsisten
         `"${item.vendedor}"`,
         `"${item.forma_pago}"`,
         `"${(item.descripcion_servicio || "").replace(/"/g, '""')}"`,
+        `"${(item.descripcion_producto || "").replace(/"/g, '""')}"`,
         item.subtotal,
         item.itbms,
         item.total,
@@ -278,6 +284,14 @@ export default function TicketsTable({ asistencias, motorizados, onDeleteAsisten
                       <p className="line-clamp-2 text-slate-500 leading-relaxed">
                         {item.comentario || item.descripcion_servicio || "Sin comentarios ingresados"}
                       </p>
+                      {item.descripcion_producto && (
+                        <div className="mt-1 flex items-center">
+                          <span className="bg-amber-50 text-amber-700 font-semibold border border-amber-100 text-[10px] px-2 py-0.5 rounded-lg flex items-center gap-1">
+                            <Tags className="h-3 w-3 text-amber-600 flex-shrink-0" />
+                            <span>Contenido: {item.descripcion_producto}</span>
+                          </span>
+                        </div>
+                      )}
                     </td>
                     <td className="px-5 py-4 font-medium text-slate-700 whitespace-nowrap text-xs">
                       {motoObj ? motoObj.nombre : "Desconocido"}
@@ -299,7 +313,10 @@ export default function TicketsTable({ asistencias, motorizados, onDeleteAsisten
                       <div className="flex items-center justify-center gap-2">
                         <button
                           id={`btn-open-ticket-${item.id}`}
-                          onClick={() => setSelectedTicket(item)}
+                          onClick={() => {
+                            setSelectedTicket(item);
+                            setShowOriginalImage(false);
+                          }}
                           className="p-1 px-3 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 rounded-lg transition-colors border border-slate-200 inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold"
                         >
                           <Eye className="h-4 w-4 text-slate-400" />
@@ -336,7 +353,7 @@ export default function TicketsTable({ asistencias, motorizados, onDeleteAsisten
       {/* FULL TICKET DETAILS INSPECT DIALOG (SLIDEOUT DRAWER / POPUP) */}
       {selectedTicket && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-3xl w-full p-6 shadow-2xl relative my-8 text-slate-800">
+          <div className={`bg-white border border-slate-200 rounded-3xl ${selectedTicket.imagen_original ? "max-w-5xl" : "max-w-3xl"} w-full p-6 shadow-2xl relative my-8 text-slate-800`}>
             
             {/* Close */}
             <button
@@ -361,99 +378,143 @@ export default function TicketsTable({ asistencias, motorizados, onDeleteAsisten
             </div>
 
             {/* Ticket body elements */}
-            <div className="mt-6 space-y-6 max-h-[480px] overflow-y-auto pr-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="mt-6 max-h-[500px] overflow-y-auto pr-2 grid grid-cols-1 md:grid-cols-12 gap-6">
               
-              {/* Primary client details metadata (col 1) */}
-              <div className="space-y-4">
-                <h4 className="text-xs uppercase font-mono tracking-wider text-amber-600 font-bold flex items-center gap-2">
-                  <FileText className="h-4 w-4" /> DATOS DEL TICKET
-                </h4>
+              {/* Left Column: All Audit Details */}
+              <div className={`${selectedTicket.imagen_original ? "md:col-span-7" : "md:col-span-12"} space-y-6`}>
+                
+                {/* Upper grid for fields under details */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Primary client details metadata */}
+                  <div className="space-y-4">
+                    <h4 className="text-xs uppercase font-mono tracking-wider text-amber-600 font-bold flex items-center gap-2">
+                      <FileText className="h-4 w-4" /> DATOS DEL TICKET
+                    </h4>
 
-                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 space-y-3">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-500">Razón Social:</span>
-                    <span className="font-semibold text-slate-800 text-right">{selectedTicket.cliente}</span>
+                    <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 space-y-3">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-500">Razón Social:</span>
+                        <span className="font-semibold text-slate-800 text-right">{selectedTicket.cliente}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-500">RUC Fiscal:</span>
+                        <span className="font-mono text-slate-700 font-semibold">{selectedTicket.ruc_cliente || "Sin RUC"}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-500">Factura Asistencial:</span>
+                        <span className="font-mono font-semibold text-amber-600">{selectedTicket.numero_factura}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-500">Teléfono:</span>
+                        <span className="font-mono text-slate-700">{selectedTicket.telefono || "Vacío"}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-slate-500 text-xs">
+                        <span>Dirección Fiscal:</span>
+                        <span className="text-right text-slate-700 font-semibold">{selectedTicket.direccion || "N/A"}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-500">RUC Fiscal:</span>
-                    <span className="font-mono text-slate-700 font-semibold">{selectedTicket.ruc_cliente || "Sin RUC"}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-500">Factura Asistencial:</span>
-                    <span className="font-mono font-semibold text-amber-600">{selectedTicket.numero_factura}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-500">Teléfono:</span>
-                    <span className="font-mono text-slate-700">{selectedTicket.telefono || "Vacio"}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-slate-500 text-xs">
-                    <span>Dirección Fiscal:</span>
-                    <span className="text-right text-slate-700 font-semibold">{selectedTicket.direccion || "N/A"}</span>
+
+                  {/* Asignación Operativa */}
+                  <div className="space-y-4">
+                    <h4 className="text-xs uppercase font-mono tracking-wider text-amber-600 font-bold flex items-center gap-2">
+                      <Briefcase className="h-4 w-4" /> ASIGNACIÓN OPERATIVA
+                    </h4>
+
+                    <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 space-y-3">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-500">Asignado a:</span>
+                        <span className="font-semibold text-slate-800">
+                          {motorizados.find(m => m.id === selectedTicket.motorizado_id)?.nombre || "Desconocido"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-500">Ubicación del Evento:</span>
+                        <span className="font-semibold text-slate-800 flex items-center gap-1 text-[11px] text-right">
+                          <MapPin className="h-3 w-3 text-rose-500" /> {selectedTicket.ubicacion_servicio || "No especificada"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-500">Fecha de Registro:</span>
+                        <span className="font-mono text-slate-700">{selectedTicket.fecha} {selectedTicket.hora}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                <h4 className="text-xs uppercase font-mono tracking-wider text-amber-600 font-bold flex items-center gap-2">
-                  <Briefcase className="h-4 w-4" /> ASIGNACIÓN OPERATIVA
-                </h4>
+                {/* Bottom Row inside left panel: Financial and Descriptions */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
+                  {/* Financials table */}
+                  <div className="sm:col-span-5 space-y-2">
+                    <h4 className="text-xs uppercase font-mono tracking-wider text-amber-600 font-bold flex items-center gap-2">
+                      <DollarSign className="h-4 w-4" /> TOTALES
+                    </h4>
+                    <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 space-y-2.5">
+                      <div className="flex justify-between items-center text-[11px]">
+                        <span className="text-slate-500">Subtotal:</span>
+                        <span className="font-mono text-slate-700 font-bold">B/. {selectedTicket.subtotal.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-[11px]">
+                        <span className="text-slate-500">ITBMS (7%):</span>
+                        <span className="font-mono text-slate-700 font-bold">B/. {selectedTicket.itbms.toFixed(2)}</span>
+                      </div>
+                      <hr className="border-slate-200" />
+                      <div className="flex justify-between items-center text-xs font-bold">
+                        <span className="text-slate-800">Total:</span>
+                        <span className="font-mono text-amber-600 font-extrabold">B/. {selectedTicket.total.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
 
-                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 space-y-3">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-500">Asignado a:</span>
-                    <span className="font-semibold text-slate-800">
-                      {motorizados.find(m => m.id === selectedTicket.motorizado_id)?.nombre || "Desconocido"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-500">Ubicación del Evento:</span>
-                    <span className="font-semibold text-slate-800 flex items-center gap-1 text-[11px] text-right">
-                      <MapPin className="h-3 w-3 text-rose-500" /> {selectedTicket.ubicacion_servicio || "No especificada"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-500">Fecha de Registro:</span>
-                    <span className="font-mono text-slate-700">{selectedTicket.fecha} {selectedTicket.hora}</span>
+                  {/* Descriptions details */}
+                  <div className="sm:col-span-7 space-y-3">
+                    <h4 className="text-xs uppercase font-mono tracking-wider text-amber-600 font-bold flex items-center gap-2">
+                      <Clock className="h-4 w-4" /> DESCRIPCIÓN TÉCNICA EXTRAÍDA
+                    </h4>
+                    <p className="text-[11px] bg-slate-50 p-3 rounded-xl text-slate-800 border border-slate-150 leading-relaxed font-semibold">
+                      {selectedTicket.descripcion_servicio || "Sin detalles extraídos."}
+                    </p>
+
+                    {selectedTicket.descripcion_producto && (
+                      <>
+                        <h4 className="text-xs uppercase font-mono tracking-wider text-amber-600 font-bold flex items-center gap-2">
+                          <Tags className="h-4 w-4" /> PRODUCTO / REPUESTO (HISTÓRICO)
+                        </h4>
+                        <p className="text-[11px] bg-slate-50 p-3 rounded-xl text-slate-800 border border-slate-150 leading-relaxed font-semibold">
+                          {selectedTicket.descripcion_producto}
+                        </p>
+                      </>
+                    )}
+
+                    {selectedTicket.comentario && (
+                      <p className="text-[11px] bg-slate-50 p-3 rounded-xl text-slate-600 border border-slate-200 leading-relaxed">
+                        <strong>Comentarios:</strong> {selectedTicket.comentario}
+                      </p>
+                    )}
                   </div>
                 </div>
+
               </div>
 
-              {/* Descriptions & Balance details (col 2) */}
-              <div className="space-y-4">
-                
-                <h4 className="text-xs uppercase font-mono tracking-wider text-amber-600 font-bold flex items-center gap-2">
-                  <DollarSign className="h-4 w-4" /> BALANCES FINANCIEROS
-                </h4>
-
-                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 space-y-3">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-500">Subtotal Neto:</span>
-                    <span className="font-mono text-slate-700">B/. {selectedTicket.subtotal.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-500">ITBMS (Impuesto 7%):</span>
-                    <span className="font-mono text-slate-700">B/. {selectedTicket.itbms.toFixed(2)}</span>
-                  </div>
-                  <hr className="border-slate-200" />
-                  <div className="flex justify-between items-center text-sm font-bold">
-                    <span className="text-slate-800">Total General:</span>
-                    <span className="font-mono text-amber-600 font-extrabold text-base">B/. {selectedTicket.total.toFixed(2)}</span>
+              {/* Right Column: Original Invoice Scan Image (Direct view, no accordion required) */}
+              {selectedTicket.imagen_original && (
+                <div className="md:col-span-5 space-y-3">
+                  <h4 className="text-xs uppercase font-mono tracking-wider text-amber-600 font-bold flex items-center gap-2">
+                    <ImageIcon className="h-4 w-4" /> DOCUMENTO ORIGINAL ESCANEADO
+                  </h4>
+                  <div className="bg-slate-50 border border-slate-200 rounded-3xl p-3 flex flex-col items-center justify-center shadow-xs overflow-hidden h-[420px] relative group">
+                    <img
+                      src={selectedTicket.imagen_original}
+                      alt="Factura Original Escaneada"
+                      className="max-h-[380px] max-w-full rounded-2xl object-contain shadow-md transition-transform duration-300 hover:scale-[1.05] cursor-zoom-in"
+                      referrerPolicy="no-referrer"
+                    />
+                    <div className="absolute bottom-4 bg-slate-900/70 backdrop-blur-xs text-[10px] text-white font-sans font-medium px-3 py-1.5 rounded-full select-none pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+                      Pase el cursor para ampliar (Zoom)
+                    </div>
                   </div>
                 </div>
-
-                <h4 className="text-xs uppercase font-mono tracking-wider text-amber-600 font-bold flex items-center gap-2">
-                  <Clock className="h-4 w-4" /> DETALLE DE SERVICIO
-                </h4>
-
-                <p className="text-xs bg-slate-50 p-3 rounded-xl text-slate-600 border border-slate-150 leading-relaxed italic">
-                  &ldquo;{selectedTicket.descripcion_servicio || "Sin detalles de servicio extraídos."}&rdquo;
-                </p>
-
-                {selectedTicket.comentario && (
-                  <p className="text-xs bg-slate-50 p-3 rounded-xl text-slate-600 border border-slate-200 leading-relaxed">
-                    <strong>Comentarios manuales:</strong> {selectedTicket.comentario}
-                  </p>
-                )}
-                
-              </div>
+              )}
 
             </div>
 
