@@ -5,7 +5,7 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, getDocs, doc, setDoc, getDoc } from "firebase/firestore";
+import { getFirestore, collection, getDocs, doc, setDoc, getDoc, deleteDoc, getDocsFromServer, getDocFromServer } from "firebase/firestore";
 
 dotenv.config();
 
@@ -50,6 +50,8 @@ interface Asistencia {
   total: number;
   estado: string; // "Completado" | "Pendiente"
   motorizado_id: string;
+  descripcion_servicio?: string;
+  descripcion_producto?: string;
   imagen_original: string; // base64 string
   imagen_procesada: string; // base64 string
   ocr_json: any; // complete extracted JSON
@@ -123,6 +125,8 @@ const initialAsistencias: Asistencia[] = [
     total: 48.15,
     estado: "Completado",
     motorizado_id: "diego_torres",
+    descripcion_servicio: "Asistencia vial: Carga e instalación de batería",
+    descripcion_producto: "Batería Hankook 12V 75Ah",
     imagen_original: "",
     imagen_procesada: "",
     ocr_json: {
@@ -135,7 +139,8 @@ const initialAsistencias: Asistencia[] = [
       subtotal: 45.00,
       itbms: 3.15,
       total: 48.15,
-      descripcion_servicio: "Asistencia vial: Carga e instalación de batería"
+      descripcion_servicio: "Asistencia vial: Carga e instalación de batería",
+      descripcion_producto: "Batería Hankook 12V 75Ah"
     },
     created_at: "2026-06-11T09:12:00.000Z"
   },
@@ -157,6 +162,8 @@ const initialAsistencias: Asistencia[] = [
     total: 37.45,
     estado: "Completado",
     motorizado_id: "sofia_ruiz",
+    descripcion_servicio: "Asistencia vial: Cambio de neumático",
+    descripcion_producto: "Neumático Bridgestone 195/65 R15",
     imagen_original: "",
     imagen_procesada: "",
     ocr_json: {
@@ -169,7 +176,8 @@ const initialAsistencias: Asistencia[] = [
       subtotal: 35.00,
       itbms: 2.45,
       total: 37.45,
-      descripcion_servicio: "Asistencia vial: Neumático"
+      descripcion_servicio: "Asistencia vial: Cambio de neumático",
+      descripcion_producto: "Neumático Bridgestone 195/65 R15"
     },
     created_at: "2026-06-11T08:30:00.000Z"
   },
@@ -191,6 +199,8 @@ const initialAsistencias: Asistencia[] = [
     total: 85.60,
     estado: "Completado",
     motorizado_id: "carlos_mendoza",
+    descripcion_servicio: "Asistencia vial: Remolque técnico por daño de motor",
+    descripcion_producto: "Servicio de Grua Plataforma (Remolque)",
     imagen_original: "",
     imagen_procesada: "",
     ocr_json: {
@@ -198,7 +208,9 @@ const initialAsistencias: Asistencia[] = [
       fecha: "2026-06-10",
       subtotal: 80.00,
       itbms: 5.60,
-      total: 85.60
+      total: 85.60,
+      descripcion_servicio: "Asistencia vial: Remolque técnico por daño de motor",
+      descripcion_producto: "Servicio de Grua Plataforma (Remolque)"
     },
     created_at: "2026-06-10T14:15:00.000Z"
   },
@@ -220,6 +232,8 @@ const initialAsistencias: Asistencia[] = [
     total: 42.80,
     estado: "Completado",
     motorizado_id: "diego_torres",
+    descripcion_servicio: "Asistencia vial: Apertura técnica de cerradura coche",
+    descripcion_producto: "Servicio Cerrajería Automotriz",
     imagen_original: "",
     imagen_procesada: "",
     ocr_json: {
@@ -227,7 +241,9 @@ const initialAsistencias: Asistencia[] = [
       fecha: "2026-06-09",
       subtotal: 40.00,
       itbms: 2.80,
-      total: 42.80
+      total: 42.80,
+      descripcion_servicio: "Asistencia vial: Apertura técnica de cerradura coche",
+      descripcion_producto: "Servicio Cerrajería Automotriz"
     },
     created_at: "2026-06-09T11:55:00.000Z"
   },
@@ -249,6 +265,8 @@ const initialAsistencias: Asistencia[] = [
     total: 16.05,
     estado: "Completado",
     motorizado_id: "sofia_ruiz",
+    descripcion_servicio: "Asistencia vial: Suministro de combustible",
+    descripcion_producto: "2 Galones Gasolina 95 Octanos",
     imagen_original: "",
     imagen_procesada: "",
     ocr_json: {
@@ -256,7 +274,9 @@ const initialAsistencias: Asistencia[] = [
       fecha: "2026-06-08",
       subtotal: 15.00,
       itbms: 1.05,
-      total: 16.05
+      total: 16.05,
+      descripcion_servicio: "Asistencia vial: Suministro de combustible",
+      descripcion_producto: "2 Galones Gasolina 95 Octanos"
     },
     created_at: "2026-06-08T09:30:00.000Z"
   }
@@ -268,52 +288,71 @@ const initialAsistencias: Asistencia[] = [
 const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
 const firebaseConfig = JSON.parse(fs.readFileSync(firebaseConfigPath, "utf-8"));
 const firebaseApp = initializeApp(firebaseConfig);
-const firestoreDb = getFirestore(firebaseApp);
+const firestoreDb = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
 
-// Helper to get all motorizados from Firestore, with seed fallback
-async function getMotorizados(): Promise<Motorizado[]> {
+// Cache State to allow extremely rapid (instantaneous) loading pages on the client
+let cachedMotorizados: Motorizado[] = [...initialMotorizados];
+let cachedAsistencias: Asistencia[] = [...initialAsistencias];
+let isSyncInProgress = false;
+
+// Robust background sync routine that doesn't block critical page queries
+async function syncFromFirestore() {
+  if (isSyncInProgress) return;
+  isSyncInProgress = true;
   try {
-    const colRef = collection(firestoreDb, "motorizados");
-    const snapshot = await getDocs(colRef);
-    if (snapshot.empty) {
-      console.log("Firestore 'motorizados' is empty. Seeding fallback data...");
+    const colMoto = collection(firestoreDb, "motorizados");
+    const snapshotMoto = await getDocsFromServer(colMoto);
+    if (!snapshotMoto.empty) {
+      const list: Motorizado[] = [];
+      snapshotMoto.forEach((docSnap) => {
+        list.push(docSnap.data() as Motorizado);
+      });
+      cachedMotorizados = list;
+    } else {
+      console.log("Firestore 'motorizados' is empty. Seeding initial motorizados datasets...");
       for (const m of initialMotorizados) {
         await setDoc(doc(firestoreDb, "motorizados", m.id), m);
       }
-      return initialMotorizados;
+      cachedMotorizados = [...initialMotorizados];
     }
-    const list: Motorizado[] = [];
-    snapshot.forEach((docSnap) => {
-      list.push(docSnap.data() as Motorizado);
-    });
-    return list;
-  } catch (err) {
-    console.error("Error reading motorizados from Firestore:", err);
-    return initialMotorizados;
-  }
-}
 
-// Helper to get all asistencias from Firestore, with seed fallback
-async function getAsistencias(): Promise<Asistencia[]> {
-  try {
-    const colRef = collection(firestoreDb, "asistencias");
-    const snapshot = await getDocs(colRef);
-    if (snapshot.empty) {
-      console.log("Firestore 'asistencias' is empty. Seeding fallback data...");
+    const colAst = collection(firestoreDb, "asistencias");
+    const snapshotAst = await getDocsFromServer(colAst);
+    if (!snapshotAst.empty) {
+      const list: Asistencia[] = [];
+      snapshotAst.forEach((docSnap) => {
+        list.push(docSnap.data() as Asistencia);
+      });
+      cachedAsistencias = list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    } else {
+      console.log("Firestore 'asistencias' is empty. Seeding initial asistencias datasets...");
       for (const a of initialAsistencias) {
         await setDoc(doc(firestoreDb, "asistencias", a.id), a);
       }
-      return initialAsistencias;
+      cachedAsistencias = [...initialAsistencias];
     }
-    const list: Asistencia[] = [];
-    snapshot.forEach((docSnap) => {
-      list.push(docSnap.data() as Asistencia);
-    });
-    return list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    console.log("Firestore cache synchronizer loaded successfully.");
   } catch (err) {
-    console.error("Error reading asistencias from Firestore:", err);
-    return initialAsistencias;
+    console.error("Background sync with Firestore encountered error:", err);
+  } finally {
+    isSyncInProgress = false;
   }
+}
+
+// Initial sync: trigger background-loading on app startup so users experience instant loads
+syncFromFirestore().catch(console.error);
+
+// Instant Response getters
+async function getMotorizados(): Promise<Motorizado[]> {
+  // Trigger background refresh so eventual consistency completes
+  syncFromFirestore().catch(console.error);
+  return cachedMotorizados;
+}
+
+async function getAsistencias(): Promise<Asistencia[]> {
+  // Trigger background refresh so eventual consistency completes
+  syncFromFirestore().catch(console.error);
+  return cachedAsistencias;
 }
 
 // ----------------------------------------------------
@@ -342,7 +381,7 @@ app.post("/api/motorizados", async (req, res) => {
 
     const id = moto.id || moto.nombre.toLowerCase().replace(/\s+/g, "_") + "_" + Math.floor(Math.random() * 1000);
     const docRef = doc(firestoreDb, "motorizados", id);
-    const docSnap = await getDoc(docRef);
+    const docSnap = await getDocFromServer(docRef);
 
     let updatedMoto: Motorizado;
     if (docSnap.exists()) {
@@ -362,8 +401,16 @@ app.post("/api/motorizados", async (req, res) => {
     }
 
     await setDoc(docRef, updatedMoto);
-    const motorizadosList = await getMotorizados();
-    res.json({ success: true, motorizados: motorizadosList });
+    
+    // Update local cache immediately
+    const existingIndex = cachedMotorizados.findIndex(m => m.id === updatedMoto.id);
+    if (existingIndex !== -1) {
+      cachedMotorizados[existingIndex] = updatedMoto;
+    } else {
+      cachedMotorizados.push(updatedMoto);
+    }
+
+    res.json({ success: true, motorizados: cachedMotorizados });
   } catch (err) {
     console.error("Error in POST /api/motorizados:", err);
     res.status(500).json({ error: "Error al registrar motorizado en Firestore." });
@@ -404,14 +451,21 @@ app.post("/api/asistencias", async (req, res) => {
     const astRef = doc(firestoreDb, "asistencias", ast.id);
     await setDoc(astRef, ast);
 
+    // Update in-memory cache for asistencias immediately
+    const existingAstIndex = cachedAsistencias.findIndex(a => a.id === ast.id);
+    if (existingAstIndex !== -1) {
+      cachedAsistencias[existingAstIndex] = ast;
+    } else {
+      cachedAsistencias.unshift(ast);
+    }
+
     // Recalculate and update motorizado indicators in real-time
     const motoRef = doc(firestoreDb, "motorizados", ast.motorizado_id);
-    const motoSnap = await getDoc(motoRef);
+    const motoSnap = await getDocFromServer(motoRef);
     if (motoSnap.exists()) {
       const targetMoto = motoSnap.data() as Motorizado;
       
-      const allAsistencias = await getAsistencias();
-      const mAsistencias = allAsistencias.filter(a => a.motorizado_id === targetMoto.id && a.estado === "Completado");
+      const mAsistencias = cachedAsistencias.filter(a => a.motorizado_id === targetMoto.id && a.estado === "Completado");
       
       targetMoto.asistencias_realizadas = mAsistencias.length;
       const sumTotal = mAsistencias.reduce((sum, item) => sum + (Number(item.total) || 0), 0);
@@ -422,12 +476,99 @@ app.post("/api/asistencias", async (req, res) => {
       targetMoto.ultima_asistencia = `${ast.fecha} ${ast.hora}`;
 
       await setDoc(motoRef, targetMoto);
+
+      // Update in-memory cache for motorizados immediately
+      const existingMotoIndex = cachedMotorizados.findIndex(m => m.id === targetMoto.id);
+      if (existingMotoIndex !== -1) {
+        cachedMotorizados[existingMotoIndex] = targetMoto;
+      }
     }
 
     res.json({ success: true, asistencia: ast });
-  } catch (err) {
+  } catch (err: any) {
     console.error("Error in POST /api/asistencias:", err);
-    res.status(500).json({ error: "Error de Firestore al guardar asistencia." });
+    res.status(500).json({ error: "Error de Firestore al guardar asistencia.", details: err?.message || String(err) });
+  }
+});
+
+// 5. Delete Asistencia & Recalculate Motorizado Statistics
+app.delete("/api/asistencias/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const astIndex = cachedAsistencias.findIndex(a => a.id === id);
+    if (astIndex === -1) {
+      return res.status(404).json({ error: "Asistencia no encontrada en el caché." });
+    }
+    
+    const ast = cachedAsistencias[astIndex];
+    const motorizadoId = ast.motorizado_id;
+    
+    // Delete from Firestore
+    try {
+      const astRef = doc(firestoreDb, "asistencias", id);
+      await deleteDoc(astRef);
+    } catch (firestoreErr: any) {
+      console.error("Error al borrar asistencia de Firestore:", firestoreErr);
+      return res.status(500).json({ 
+        error: "No se pudo borrar el ticket en Firestore. Compruebe los permisos o internet.",
+        details: firestoreErr?.message || String(firestoreErr)
+      });
+    }
+    
+    // Remove from cached list
+    cachedAsistencias.splice(astIndex, 1);
+    
+    // Recalculate motorizado statistics
+    if (motorizadoId) {
+      try {
+        const motoRef = doc(firestoreDb, "motorizados", motorizadoId);
+        const motoSnap = await getDocFromServer(motoRef);
+        if (motoSnap.exists()) {
+          const targetMoto = motoSnap.data() as Motorizado;
+          
+          const mAsistencias = cachedAsistencias.filter(a => a.motorizado_id === targetMoto.id && a.estado === "Completado");
+          
+          targetMoto.asistencias_realizadas = mAsistencias.length;
+          const sumTotal = mAsistencias.reduce((sum, item) => sum + (Number(item.total) || 0), 0);
+          targetMoto.total_facturado = Number(sumTotal.toFixed(2));
+          
+          const daysSince = Math.max(1, Math.ceil((Date.now() - new Date(targetMoto.fecha_ingreso).getTime()) / (1000 * 60 * 60 * 24)));
+          targetMoto.promedio_diario = Number((targetMoto.total_facturado / daysSince).toFixed(2));
+          
+          // Find latest remaining assistance to restore as last assistance timestamp
+          const remainingMotoAsts = cachedAsistencias.filter(a => a.motorizado_id === targetMoto.id);
+          if (remainingMotoAsts.length > 0) {
+            const sorted = [...remainingMotoAsts].sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+            targetMoto.ultima_asistencia = `${sorted[0].fecha} ${sorted[0].hora}`;
+          } else {
+            targetMoto.ultima_asistencia = "Ninguna";
+          }
+          
+          await setDoc(motoRef, targetMoto);
+          
+          // Update in-memory cache for motorizados immediately
+          const existingMotoIndex = cachedMotorizados.findIndex(m => m.id === targetMoto.id);
+          if (existingMotoIndex !== -1) {
+            cachedMotorizados[existingMotoIndex] = targetMoto;
+          }
+        }
+      } catch (calcErr: any) {
+        console.error("Error al recalcular estadísticas del motorizado:", calcErr);
+        return res.status(500).json({
+          error: "El ticket se borró de la base de datos, pero no se pudieron actualizar las estadísticas del conductor.",
+          details: calcErr?.message || String(calcErr)
+        });
+      }
+    }
+    
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("Error general en DELETE /api/asistencias/:id", err);
+    res.status(500).json({ 
+      error: "Error inesperado al eliminar asistencia de la base de datos.",
+      details: err?.message || String(err)
+    });
   }
 });
 
@@ -496,6 +637,7 @@ Retorna un objeto JSON con los siguientes campos obligatorios.
             direccion: { type: Type.STRING, description: "Dirección física detallada" },
             comentario: { type: Type.STRING, description: "Notas, observaciones o detalles adicionales manuales" },
             descripcion_servicio: { type: Type.STRING, description: "Descripción detallada del servicio prestado, repuestos, combustible, etc." },
+            descripcion_producto: { type: Type.STRING, description: "Descripción del producto o repuesto facturado con nombre o modelo, ej: Batería Hankook, Neumático, etc." },
             forma_pago: { type: Type.STRING, description: "Efectivo, Tarjeta, Yappy, Transferencia, ACH, etc." },
             vendedor: { type: Type.STRING, description: "Nombre del vendedor, caja o receptor del pago" },
             cuenta: { type: Type.STRING, description: "Cuentas bancarias citadas al pie para transferencias" },

@@ -41,6 +41,8 @@
         "motorizado_id": { "type": "string" },
         "imagen_original": { "type": "string" },
         "imagen_procesada": { "type": "string" },
+        "descripcion_servicio": { "type": "string" },
+        "descripcion_producto": { "type": "string" },
         "ocr_json": { "type": "string" },
         "created_at": { "type": "string", "format": "date-time" }
       },

@@ -11,30 +11,30 @@ service cloud.firestore {
     match /motorizados/{motorizadoId} {
       allow read: if true;
       allow create, update: if isValidId(motorizadoId) && isValidMotorizado(request.resource.data);
-      allow delete: if false;
+      allow delete: if isValidId(motorizadoId);
     }
 
     // MotoAssist Firestore rules for asistencias (publicly readable, structure-validated writes)
     match /asistencias/{asistenciaId} {
       allow read: if true;
       allow create, update: if isValidId(asistenciaId) && isValidAsistencia(request.resource.data);
-      allow delete: if false;
+      allow delete: if isValidId(asistenciaId);
     }
 
     // Reuse helper functions inside match block
     function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() <= 128;
     }
 
     function isValidMotorizado(data) {
       return data.keys().hasAll(['id', 'nombre', 'telefono', 'estado']) 
-        && data.keys().size() <= 12
+        && data.keys().size() <= 20
         && data.id is string && data.id.size() <= 128
         && data.nombre is string && data.nombre.size() <= 128
         && data.telefono is string && data.telefono.size() <= 32
         && (data.estado == 'Activo' || data.estado == 'Inactivo')
         && (!data.keys().hasAny(['fecha_ingreso']) || (data.fecha_ingreso is string && data.fecha_ingreso.size() <= 32))
-        && (!data.keys().hasAny(['asistencias_realizadas']) || data.asistencias_realizadas is int)
+        && (!data.keys().hasAny(['asistencias_realizadas']) || data.asistencias_realizadas is number)
         && (!data.keys().hasAny(['total_facturado']) || data.total_facturado is number)
         && (!data.keys().hasAny(['promedio_diario']) || data.promedio_diario is number)
         && (!data.keys().hasAny(['ultima_asistencia']) || (data.ultima_asistencia is string && data.ultima_asistencia.size() <= 64));
@@ -64,6 +64,8 @@ service cloud.firestore {
         && (!data.keys().hasAny(['imagen_original']) || data.imagen_original is string)
         && (!data.keys().hasAny(['imagen_processed']) || data.imagen_processed is string)
         && (!data.keys().hasAny(['imagen_procesada']) || data.imagen_procesada is string)
+        && (!data.keys().hasAny(['descripcion_servicio']) || (data.descripcion_servicio is string && data.descripcion_servicio.size() <= 2048))
+        && (!data.keys().hasAny(['descripcion_producto']) || (data.descripcion_producto is string && data.descripcion_producto.size() <= 2048))
         && (!data.keys().hasAny(['ocr_json']) || data.ocr_json is map || data.ocr_json is string);
     }
   }

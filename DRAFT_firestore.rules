@@ -64,6 +64,8 @@ service cloud.firestore {
         && (!data.keys().hasAny(['imagen_original']) || data.imagen_original is string)
         && (!data.keys().hasAny(['imagen_processed']) || data.imagen_processed is string)
         && (!data.keys().hasAny(['imagen_procesada']) || data.imagen_procesada is string)
+        && (!data.keys().hasAny(['descripcion_servicio']) || (data.descripcion_servicio is string && data.descripcion_servicio.size() <= 2048))
+        && (!data.keys().hasAny(['descripcion_producto']) || (data.descripcion_producto is string && data.descripcion_producto.size() <= 2048))
         && (!data.keys().hasAny(['ocr_json']) || data.ocr_json is map || data.ocr_json is string);
     }
   }
