@@ -774,7 +774,7 @@ app.post("/api/config/gemini/test", async (req, res) => {
     
     const testResult = await callGoogleGemini(
       keyToTest,
-      "gemini-3.5-flash",
+      "gemini-2.5-flash",
       [{ text: "Ping. Responde únicamente con la palabra OK." }]
     );
     
@@ -884,7 +884,7 @@ Retorna un objeto JSON con los siguientes campos obligatorios.
 
     const response = await callGoogleGemini(
       apiKey,
-      "gemini-3.5-flash",
+      "gemini-2.5-flash",
       [imagePart, { text: promptText }],
       {
         type: Type.OBJECT,
