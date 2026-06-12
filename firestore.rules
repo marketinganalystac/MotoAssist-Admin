@@ -21,9 +21,23 @@ service cloud.firestore {
       allow delete: if isValidId(asistenciaId);
     }
 
+    // System configuration (e.g. Gemini API keys, persistent state)
+    match /config/{configId} {
+      allow read: if isValidId(configId);
+      allow create, update: if isValidId(configId) && isValidConfig(request.resource.data);
+      allow delete: if isValidId(configId);
+    }
+
     // Reuse helper functions inside match block
     function isValidId(id) {
       return id is string && id.size() <= 128;
+    }
+
+    function isValidConfig(data) {
+      return data.keys().hasAll(['apiKey'])
+        && data.keys().size() <= 4
+        && data.apiKey is string && data.apiKey.size() <= 512
+        && (!data.keys().hasAny(['updated_at']) || (data.updated_at is string && data.updated_at.size() <= 64));
     }
 
     function isValidMotorizado(data) {

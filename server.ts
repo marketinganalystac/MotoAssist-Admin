@@ -5,7 +5,7 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, getDocs, doc, setDoc, getDoc, deleteDoc, getDocsFromServer, getDocFromServer } from "firebase/firestore";
+import { getFirestore, collection, getDocs, doc, setDoc, getDoc, deleteDoc, getDocsFromServer, getDocFromServer, onSnapshot } from "firebase/firestore";
 
 dotenv.config();
 
@@ -291,67 +291,93 @@ const firebaseApp = initializeApp(firebaseConfig);
 const firestoreDb = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
 
 // Cache State to allow extremely rapid (instantaneous) loading pages on the client
-let cachedMotorizados: Motorizado[] = [...initialMotorizados];
-let cachedAsistencias: Asistencia[] = [...initialAsistencias];
-let isSyncInProgress = false;
+let cachedMotorizados: Motorizado[] = [];
+let cachedAsistencias: Asistencia[] = [];
 
-// Robust background sync routine that doesn't block critical page queries
-async function syncFromFirestore() {
-  if (isSyncInProgress) return;
-  isSyncInProgress = true;
-  try {
-    const colMoto = collection(firestoreDb, "motorizados");
-    const snapshotMoto = await getDocsFromServer(colMoto);
-    if (!snapshotMoto.empty) {
+// Purge preloaded datasets from Firestore instantly on startup
+async function purgePreloadedData() {
+  const preloadedMotoIds = ["diego_torres", "sofia_ruiz", "carlos_mendoza", "ana_gomez"];
+  for (const id of preloadedMotoIds) {
+    try {
+      await deleteDoc(doc(firestoreDb, "motorizados", id));
+    } catch (e) {
+      // ignore
+    }
+  }
+  const preloadedAstIds = ["AST-1001", "AST-1002", "AST-1003", "AST-1004", "AST-1005"];
+  for (const id of preloadedAstIds) {
+    try {
+      await deleteDoc(doc(firestoreDb, "asistencias", id));
+    } catch (e) {
+      // ignore
+    }
+  }
+  console.log("Mock preloaded datasets check and purge executed successfully.");
+}
+purgePreloadedData().catch(console.error);
+
+// Real-time synchronization listeners for sub-second, bi-directional, quota-friendly operations
+onSnapshot(
+  collection(firestoreDb, "motorizados"),
+  async (snapshot) => {
+    if (snapshot.empty) {
+      console.log("Firestore 'motorizados' is empty.");
+      cachedMotorizados = [];
+    } else {
       const list: Motorizado[] = [];
-      snapshotMoto.forEach((docSnap) => {
+      snapshot.forEach((docSnap) => {
         list.push(docSnap.data() as Motorizado);
       });
       cachedMotorizados = list;
-    } else {
-      console.log("Firestore 'motorizados' is empty. Seeding initial motorizados datasets...");
-      for (const m of initialMotorizados) {
-        await setDoc(doc(firestoreDb, "motorizados", m.id), m);
-      }
-      cachedMotorizados = [...initialMotorizados];
     }
+  },
+  (err) => {
+    console.error("Real-time listener for 'motorizados' failed:", err);
+  }
+);
 
-    const colAst = collection(firestoreDb, "asistencias");
-    const snapshotAst = await getDocsFromServer(colAst);
-    if (!snapshotAst.empty) {
+onSnapshot(
+  collection(firestoreDb, "asistencias"),
+  async (snapshot) => {
+    if (snapshot.empty) {
+      console.log("Firestore 'asistencias' is empty.");
+      cachedAsistencias = [];
+    } else {
       const list: Asistencia[] = [];
-      snapshotAst.forEach((docSnap) => {
+      snapshot.forEach((docSnap) => {
         list.push(docSnap.data() as Asistencia);
       });
       cachedAsistencias = list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    } else {
-      console.log("Firestore 'asistencias' is empty. Seeding initial asistencias datasets...");
-      for (const a of initialAsistencias) {
-        await setDoc(doc(firestoreDb, "asistencias", a.id), a);
-      }
-      cachedAsistencias = [...initialAsistencias];
     }
-    console.log("Firestore cache synchronizer loaded successfully.");
-  } catch (err) {
-    console.error("Background sync with Firestore encountered error:", err);
-  } finally {
-    isSyncInProgress = false;
+  },
+  (err) => {
+    console.error("Real-time listener for 'asistencias' failed:", err);
   }
-}
+);
 
-// Initial sync: trigger background-loading on app startup so users experience instant loads
-syncFromFirestore().catch(console.error);
+// Unified persistent config cache for Gemini API Key across sessions/PCs
+let cachedGeminiApiKey = "";
+onSnapshot(
+  doc(firestoreDb, "config", "gemini"),
+  (docSnap) => {
+    if (docSnap.exists()) {
+      cachedGeminiApiKey = docSnap.data().apiKey || "";
+      console.log("Synchronized Gemini API key loaded from Firestore.");
+    } else {
+      cachedGeminiApiKey = "";
+    }
+  },
+  (err) => {
+    console.error("Real-time listener for 'config/gemini' document failed:", err);
+  }
+);
 
 // Instant Response getters
 async function getMotorizados(): Promise<Motorizado[]> {
-  // Trigger background refresh so eventual consistency completes
-  syncFromFirestore().catch(console.error);
   return cachedMotorizados;
 }
 
 async function getAsistencias(): Promise<Asistencia[]> {
-  // Trigger background refresh so eventual consistency completes
-  syncFromFirestore().catch(console.error);
   return cachedAsistencias;
 }
 
@@ -572,7 +598,245 @@ app.delete("/api/asistencias/:id", async (req, res) => {
   }
 });
 
-// 5. OCR Analysis Route with Gemini API Integration (Server-side)
+// 5. Delete Motorizado from Firestore by ID
+app.delete("/api/motorizados/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Delete first from Firestore
+    try {
+      const docRef = doc(firestoreDb, "motorizados", id);
+      await deleteDoc(docRef);
+    } catch (firestoreErr: any) {
+      console.error("Error al borrar motorizado de Firestore:", firestoreErr);
+      return res.status(500).json({ 
+        error: "No se pudo borrar el motorizado de Firestore. Compruebe los permisos o internet.",
+        details: firestoreErr?.message || String(firestoreErr)
+      });
+    }
+
+    // Force filtering local cache optimistically
+    cachedMotorizados = cachedMotorizados.filter(m => m.id !== id);
+
+    res.json({ success: true, motorizados: cachedMotorizados });
+  } catch (err: any) {
+    console.error("Error general en DELETE /api/motorizados/:id", err);
+    res.status(500).json({ 
+      error: "Error inesperado al eliminar motorizado de la base de datos.",
+      details: err?.message || String(err)
+    });
+  }
+});
+
+// 5.5. System and user Firestore-persisted Gemini API credentials config
+app.get("/api/config/gemini", async (req, res) => {
+  try {
+    let keyToUse = cachedGeminiApiKey || process.env.GEMINI_API_KEY || "";
+    // Filter common placeholders to avoid hard errors
+    if (
+      keyToUse.trim() === "" || 
+      keyToUse === "MY_GEMINI_API_KEY" || 
+      keyToUse.includes("YOUR_") || 
+      keyToUse.includes("INSERT_")
+    ) {
+      keyToUse = "";
+    }
+
+    if (!keyToUse) {
+      return res.json({ hasKey: false, maskedKey: "" });
+    }
+    const masked = keyToUse.length > 8 
+      ? `${keyToUse.substring(0, 8)}...${keyToUse.substring(keyToUse.length - 4)}` 
+      : "Configurada (Activa)";
+    res.json({ hasKey: true, maskedKey: masked });
+  } catch (err: any) {
+    res.status(500).json({ error: "Fallo al leer la configuración de la clave API." });
+  }
+});
+
+app.post("/api/config/gemini", async (req, res) => {
+  try {
+    const { apiKey } = req.body;
+    if (!apiKey || typeof apiKey !== "string" || !apiKey.trim()) {
+      return res.status(400).json({ error: "La clave provista está vacía o es inválida." });
+    }
+    
+    // Clean key (remove spaces, quotes or brackets user might accidentally paste)
+    let cleanKey = apiKey.trim().replace(/^["']|["']$/g, "");
+    
+    if (
+      cleanKey === "MY_GEMINI_API_KEY" || 
+      cleanKey.includes("YOUR_") || 
+      cleanKey.includes("INSERT_") ||
+      cleanKey.length < 5
+    ) {
+      return res.status(400).json({ error: "La clave ingresada es un marcador de posición ficticio o es demasiado corta para ser válida." });
+    }
+    
+    // Write directly to cloud Firestore to persist for other computers/sessions
+    const configRef = doc(firestoreDb, "config", "gemini");
+    await setDoc(configRef, { apiKey: cleanKey, updated_at: new Date().toISOString() });
+    
+    cachedGeminiApiKey = cleanKey;
+    const masked = cleanKey.length > 8 
+      ? `${cleanKey.substring(0, 8)}...${cleanKey.substring(cleanKey.length - 4)}` 
+      : "Configurada (Activa)";
+
+    res.json({ success: true, maskedKey: masked });
+  } catch (err: any) {
+    console.error("Error al persistir la clave en Firestore:", err);
+    res.status(500).json({ error: "Error al guardar la clave de API en Firestore." });
+  }
+});
+
+/**
+ * Helper to call standard Google Gemini REST API.
+ * Supports both standard API Keys (AIzaSy...) and GCP corporate tokens (AQ..., ya29...).
+ */
+async function callGoogleGemini(
+  apiKey: string,
+  model: string,
+  contentsParts: any[],
+  responseSchema?: any,
+  responseMimeType?: string
+) {
+  const isAccessToken = apiKey.startsWith("AQ.") || apiKey.startsWith("ya29.");
+  const url = isAccessToken
+    ? `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
+    : `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "User-Agent": "aistudio-build",
+  };
+
+  if (isAccessToken) {
+    headers["Authorization"] = `Bearer ${apiKey}`;
+  }
+
+  const payload: any = {
+    contents: [
+      {
+        parts: contentsParts,
+      }
+    ],
+  };
+
+  if (responseMimeType || responseSchema) {
+    payload.generationConfig = {};
+    if (responseMimeType) {
+      payload.generationConfig.responseMimeType = responseMimeType;
+    }
+    if (responseSchema) {
+      payload.generationConfig.responseSchema = responseSchema;
+    }
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    let parsedErr;
+    try {
+      parsedErr = JSON.parse(errorBody);
+    } catch {
+      parsedErr = null;
+    }
+    const message = parsedErr?.error?.message || errorBody;
+    throw new Error(message || `Gemini API Error with HTTP status ${response.status}`);
+  }
+
+  const data = await response.json();
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  
+  return { text, data };
+}
+
+app.post("/api/config/gemini/test", async (req, res) => {
+  try {
+    const { apiKey } = req.body;
+    let keyToTest = apiKey ? apiKey.trim().replace(/^["']|["']$/g, "") : (cachedGeminiApiKey || process.env.GEMINI_API_KEY || "");
+    
+    if (
+      !keyToTest || 
+      keyToTest === "MY_GEMINI_API_KEY" || 
+      keyToTest.includes("YOUR_") || 
+      keyToTest.includes("INSERT_") || 
+      keyToTest.trim() === ""
+    ) {
+      return res.status(400).json({ success: false, error: "No hay ninguna clave configurada para probar. Por favor ingresa una clave primero." });
+    }
+    
+    const testResult = await callGoogleGemini(
+      keyToTest,
+      "gemini-3.5-flash",
+      [{ text: "Ping. Responde únicamente con la palabra OK." }]
+    );
+    
+    if (testResult && testResult.text) {
+      return res.json({ success: true, message: "¡Conexión Exitosa! Gemini respondió correctamente." });
+    } else {
+      return res.status(400).json({ success: false, error: "El modelo respondió pero no devolvió el texto esperado." });
+    }
+  } catch (err: any) {
+    console.error("Error al probar la clave Gemini:", err);
+    let errorMsg = err?.message || String(err);
+    if (errorMsg.includes("API key not valid")) {
+      errorMsg = "API key no válida. Asegúrate de copiar la clave exactamente como aparece en Google AI Studio.";
+    }
+    return res.status(400).json({ success: false, error: errorMsg });
+  }
+});
+
+app.delete("/api/config/gemini", async (req, res) => {
+  try {
+    const configRef = doc(firestoreDb, "config", "gemini");
+    await deleteDoc(configRef);
+    cachedGeminiApiKey = "";
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: "Error al remover la clave guardada de Firestore." });
+  }
+});
+
+// 5.8. Purge all mock datasets and clean the database collections
+app.post("/api/config/clean", async (req, res) => {
+  try {
+    const motoCollection = collection(firestoreDb, "motorizados");
+    const astCollection = collection(firestoreDb, "asistencias");
+
+    const motoSnapshot = await getDocsFromServer(motoCollection);
+    const astSnapshot = await getDocsFromServer(astCollection);
+
+    const deletePromises: Promise<void>[] = [];
+
+    motoSnapshot.forEach((docSnap) => {
+      deletePromises.push(deleteDoc(docSnap.ref));
+    });
+
+    astSnapshot.forEach((docSnap) => {
+      deletePromises.push(deleteDoc(docSnap.ref));
+    });
+
+    await Promise.all(deletePromises);
+
+    // Dynamic reset of cache
+    cachedMotorizados = [];
+    cachedAsistencias = [];
+
+    console.log("Database fully purged by administrative request.");
+    res.json({ success: true, message: "Todos los datos de prueba han sido eliminados de la base de datos de Firestore." });
+  } catch (err: any) {
+    console.error("Error al purgar base de datos:", err);
+    res.status(500).json({ error: "Fallo al purgar la base de datos de Firestore.", details: err.message });
+  }
+});
+
+// 6. OCR Analysis Route with Gemini API Integration (Server-side)
 app.post("/api/ocr-process", async (req, res) => {
   try {
     const { imageBase64 } = req.body;
@@ -580,22 +844,20 @@ app.post("/api/ocr-process", async (req, res) => {
       return res.status(400).json({ error: "No se proporcionó la imagen de la factura." });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({
-        error: "GEMINI_API_KEY no configurada. Edite Settings > Secrets en la barra lateral para agregarla."
+    let apiKey = cachedGeminiApiKey || process.env.GEMINI_API_KEY || "";
+    // Sanitize and filter known dummy placeholders
+    apiKey = apiKey.trim().replace(/^["']|["']$/g, "");
+    if (
+      !apiKey || 
+      apiKey === "MY_GEMINI_API_KEY" || 
+      apiKey.includes("YOUR_") || 
+      apiKey.includes("INSERT_") ||
+      apiKey.length < 5
+    ) {
+      return res.status(400).json({
+        error: "Clave de API Gemini no configurada o inválida. Por favor, agregue una clave de API Gemini real en el panel de Configuración de la cabecera."
       });
     }
-
-    // Initialize modern @google/genai client with proper User-Agent header
-    const aiClient = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
-    });
 
     // Remove data URL prefix if present for binary matching
     const base64Clean = imageBase64.replace(/^data:image\/\w+;base64,/, "");
@@ -619,41 +881,40 @@ Reglas del formato de salida:
 Retorna un objeto JSON con los siguientes campos obligatorios.
 `;
 
-    const response = await aiClient.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: { parts: [imagePart, { text: promptText }] },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            numero_factura: { type: Type.STRING, description: "Número de factura o serie visible, ej. FAC-10023" },
-            fecha: { type: Type.STRING, description: "Fecha de emisión de factura en formato YYYY-MM-DD" },
-            hora: { type: Type.STRING, description: "Hora de emisión de factura en formato HH:MM" },
-            cliente: { type: Type.STRING, description: "Nombre completo del cliente o empresa" },
-            ruc_cliente: { type: Type.STRING, description: "RUC, cédula, DV o NIT del cliente" },
-            receptor: { type: Type.STRING, description: "Nombre de la persona o receptor del servicio" },
-            telefono: { type: Type.STRING, description: "Teléfono o celular del cliente" },
-            direccion: { type: Type.STRING, description: "Dirección física detallada" },
-            comentario: { type: Type.STRING, description: "Notas, observaciones o detalles adicionales manuales" },
-            descripcion_servicio: { type: Type.STRING, description: "Descripción detallada del servicio prestado, repuestos, combustible, etc." },
-            descripcion_producto: { type: Type.STRING, description: "Descripción del producto o repuesto facturado con nombre o modelo, ej: Batería Hankook, Neumático, etc." },
-            forma_pago: { type: Type.STRING, description: "Efectivo, Tarjeta, Yappy, Transferencia, ACH, etc." },
-            vendedor: { type: Type.STRING, description: "Nombre del vendedor, caja o receptor del pago" },
-            cuenta: { type: Type.STRING, description: "Cuentas bancarias citadas al pie para transferencias" },
-            factura_interna: { type: Type.STRING, description: "Número de orden, cotización o documento de referencia interno" },
-            sucursal: { type: Type.STRING, description: "Nombre de la sucursal o patio de despacho" },
-            punto_facturacion: { type: Type.STRING, description: "Dispositivo o punto de facturación" },
-            subtotal: { type: Type.NUMBER, description: "Subtotal antes de impuestos" },
-            itbms: { type: Type.NUMBER, description: "Impuesto ITBMS (impuesto del 7% panameño u otro aplicable)" },
-            total: { type: Type.NUMBER, description: "Total general de la factura" },
-            ubicacion_servicio: { type: Type.STRING, description: "Ubicación del evento o destino del servicio" },
-            pie_factura: { type: Type.STRING, description: "Información contractual, cuentas bancarias, pie de página o teléfonos adicionales" },
-            datos_adicionales: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Cualquier otra información adicional relevante detectada" }
-          }
+    const response = await callGoogleGemini(
+      apiKey,
+      "gemini-3.5-flash",
+      [imagePart, { text: promptText }],
+      {
+        type: Type.OBJECT,
+        properties: {
+          numero_factura: { type: Type.STRING, description: "Número de factura o serie visible, ej. FAC-10023" },
+          fecha: { type: Type.STRING, description: "Fecha de emisión de factura en formato YYYY-MM-DD" },
+          hora: { type: Type.STRING, description: "Hora de emisión de factura en formato HH:MM" },
+          cliente: { type: Type.STRING, description: "Nombre completo del cliente o empresa" },
+          ruc_cliente: { type: Type.STRING, description: "RUC, cédula, DV o NIT del cliente" },
+          receptor: { type: Type.STRING, description: "Nombre de la persona o receptor del servicio" },
+          telefono: { type: Type.STRING, description: "Teléfono o celular del cliente" },
+          direccion: { type: Type.STRING, description: "Dirección física detallada" },
+          comentario: { type: Type.STRING, description: "Notas, observaciones o detalles adicionales manuales" },
+          descripcion_servicio: { type: Type.STRING, description: "Descripción detallada del servicio prestado, repuestos, combustible, etc." },
+          descripcion_producto: { type: Type.STRING, description: "Descripción del producto o repuesto facturado con nombre o modelo, ej: Batería Hankook, Neumático, etc." },
+          forma_pago: { type: Type.STRING, description: "Efectivo, Tarjeta, Yappy, Transferencia, ACH, etc." },
+          vendedor: { type: Type.STRING, description: "Nombre del vendedor, caja o receptor del pago" },
+          cuenta: { type: Type.STRING, description: "Cuentas bancarias citadas al pie para transferencias" },
+          factura_interna: { type: Type.STRING, description: "Número de orden, cotización o documento de referencia interno" },
+          sucursal: { type: Type.STRING, description: "Nombre de la sucursal o patio de despacho" },
+          punto_facturacion: { type: Type.STRING, description: "Dispositivo o punto de facturación" },
+          subtotal: { type: Type.NUMBER, description: "Subtotal antes de impuestos" },
+          itbms: { type: Type.NUMBER, description: "Impuesto ITBMS (impuesto del 7% panameño u otro aplicable)" },
+          total: { type: Type.NUMBER, description: "Total general de la factura" },
+          ubicacion_servicio: { type: Type.STRING, description: "Ubicación del evento o destino del servicio" },
+          pie_factura: { type: Type.STRING, description: "Información contractual, cuentas bancarias, pie de página o teléfonos adicionales" },
+          datos_adicionales: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Cualquier otra información adicional relevante detectada" }
         }
-      }
-    });
+      },
+      "application/json"
+    );
 
     const bodyText = response.text;
     if (!bodyText) {
