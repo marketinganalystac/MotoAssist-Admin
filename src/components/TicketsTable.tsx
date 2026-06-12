@@ -16,15 +16,17 @@ import {
   CheckCircle2,
   FileText,
   Clock,
-  Briefcase
+  Briefcase,
+  Trash2
 } from "lucide-react";
 
 interface TicketsTableProps {
   asistencias: Asistencia[];
   motorizados: Motorizado[];
+  onDeleteAsistencia?: (id: string) => void;
 }
 
-export default function TicketsTable({ asistencias, motorizados }: TicketsTableProps) {
+export default function TicketsTable({ asistencias, motorizados, onDeleteAsistencia }: TicketsTableProps) {
   // Query Filters State
   const [filterCliente, setFilterCliente] = useState<string>("");
   const [filterEstado, setFilterEstado] = useState<string>("TODOS");
@@ -34,6 +36,9 @@ export default function TicketsTable({ asistencias, motorizados }: TicketsTableP
 
   // Inspect detail popup state
   const [selectedTicket, setSelectedTicket] = useState<Asistencia | null>(null);
+
+  // Custom delete state
+  const [deletingTicketId, setDeletingTicketId] = useState<string | null>(null);
 
   // Filter computation
   const filteredAsistencias = useMemo(() => {
@@ -72,23 +77,27 @@ export default function TicketsTable({ asistencias, motorizados }: TicketsTableP
     // UTF-8 BOM byte array so Excel interprets Spanish accents (ñ, í, ó) correctly
     const headers = [
       "ID",
-      "Fecha",
-      "Hora",
-      "Factura",
-      "Cliente",
-      "RUC Cliente",
-      "Teléfono",
-      "Dirección",
-      "Comentario",
-      "Ubicación de Servicio",
-      "Vendedor",
+      "Fecha de Emision",
+      "Hora de Emision",
+      "Numero de Factura",
+      "Cliente Razon Social",
+      "Ruc Cliente",
+      "Telefono Cliente",
+      "Direccion Fiscal Cliente",
+      "Observacion Operativa (Comentario)",
+      "Ubicacion de Servicio Vial",
+      "Vendedor o Cajero",
       "Forma de Pago",
-      "Subtotal",
-      "ITBMS",
-      "Total",
-      "Estado",
-      "Motorizado",
-      "Fecha Registro"
+      "Descripcion Tecnica del Servicio",
+      "Subtotal Neto",
+      "ITBMS (Cargos)",
+      "Total Factura",
+      "Estado del Ticket",
+      "ID Conductor Motorizado",
+      "Nombre Conductor Motorizado",
+      "Fecha de Creacion Registro",
+      "Tiene Imagen Original",
+      "Tiene Imagen Procesada"
     ];
 
     const rows = filteredAsistencias.map(item => {
@@ -106,12 +115,16 @@ export default function TicketsTable({ asistencias, motorizados }: TicketsTableP
         `"${item.ubicacion_servicio.replace(/"/g, '""')}"`,
         `"${item.vendedor}"`,
         `"${item.forma_pago}"`,
+        `"${(item.descripcion_servicio || "").replace(/"/g, '""')}"`,
         item.subtotal,
         item.itbms,
         item.total,
         item.estado,
+        `"${item.motorizado_id}"`,
         `"${motoName}"`,
-        item.created_at
+        item.created_at,
+        `"${item.imagen_original ? "SI" : "NO"}"`,
+        `"${item.imagen_procesada ? "SI" : "NO"}"`
       ];
     });
 
@@ -136,7 +149,7 @@ export default function TicketsTable({ asistencias, motorizados }: TicketsTableP
       <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm space-y-4">
         
         <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
-          <Filter className="h-4.5 w-4.5 text-blue-600" />
+          <Filter className="h-4.5 w-4.5 text-amber-500" />
           <h4 className="text-sm font-bold text-slate-900 font-sans">
             Filtros Avanzados y Reportes
           </h4>
@@ -152,7 +165,7 @@ export default function TicketsTable({ asistencias, motorizados }: TicketsTableP
                 type="text" 
                 value={filterCliente}
                 onChange={(e) => setFilterCliente(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 text-slate-800 pl-9 pr-3.5 py-2.5 rounded-xl text-xs font-sans focus:border-blue-600 focus:bg-white"
+                className="w-full bg-slate-50 border border-slate-200 text-slate-800 pl-9 pr-3.5 py-2.5 rounded-xl text-xs font-sans focus:border-amber-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
                 placeholder="Cliente o N° factura..."
               />
               <Search className="h-4 w-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -165,7 +178,7 @@ export default function TicketsTable({ asistencias, motorizados }: TicketsTableP
             <select
               value={filterMotorizado}
               onChange={(e) => setFilterMotorizado(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 text-slate-800 px-3.5 py-2.5 rounded-xl text-xs font-sans focus:border-blue-600 focus:bg-white"
+              className="w-full bg-slate-50 border border-slate-200 text-slate-800 px-3.5 py-2.5 rounded-xl text-xs font-sans focus:border-amber-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
             >
               <option value="TODOS">Todos los motorizados</option>
               {motorizados.map(m => (
@@ -180,7 +193,7 @@ export default function TicketsTable({ asistencias, motorizados }: TicketsTableP
             <select
               value={filterEstado}
               onChange={(e) => setFilterEstado(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 text-slate-800 px-3.5 py-2.5 rounded-xl text-xs font-sans focus:border-blue-600 focus:bg-white"
+              className="w-full bg-slate-50 border border-slate-200 text-slate-800 px-3.5 py-2.5 rounded-xl text-xs font-sans focus:border-amber-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
             >
               <option value="TODOS">Todos los estados</option>
               <option value="Completado">Completados</option>
@@ -195,7 +208,7 @@ export default function TicketsTable({ asistencias, motorizados }: TicketsTableP
               type="date"
               value={filterFechaInicio}
               onChange={(e) => setFilterFechaInicio(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 text-slate-800 px-3.5 py-2.5 rounded-xl text-xs font-mono focus:border-blue-600 focus:bg-white"
+              className="w-full bg-slate-50 border border-slate-200 text-slate-800 px-3.5 py-2.5 rounded-xl text-xs font-mono focus:border-amber-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
             />
           </div>
 
@@ -206,7 +219,7 @@ export default function TicketsTable({ asistencias, motorizados }: TicketsTableP
               type="date"
               value={filterFechaFin}
               onChange={(e) => setFilterFechaFin(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 text-slate-800 px-3.5 py-2.5 rounded-xl text-xs font-mono focus:border-blue-600 focus:bg-white"
+              className="w-full bg-slate-50 border border-slate-200 text-slate-800 px-3.5 py-2.5 rounded-xl text-xs font-mono focus:border-amber-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
             />
           </div>
 
@@ -254,7 +267,7 @@ export default function TicketsTable({ asistencias, motorizados }: TicketsTableP
                       <div className="font-bold text-slate-900">{item.fecha}</div>
                       <div className="text-[10px] text-slate-400 font-mono mt-0.5">{item.hora || "00:00"}</div>
                     </td>
-                    <td className="px-5 py-4 font-mono font-bold text-blue-600 whitespace-nowrap">
+                    <td className="px-5 py-4 font-mono font-bold text-amber-600 whitespace-nowrap">
                       {item.numero_factura}
                     </td>
                     <td className="px-5 py-4">
@@ -283,14 +296,26 @@ export default function TicketsTable({ asistencias, motorizados }: TicketsTableP
                       B/. {(item.total || 0).toFixed(2)}
                     </td>
                     <td className="px-5 py-4 whitespace-nowrap text-center">
-                      <button
-                        id={`btn-open-ticket-${item.id}`}
-                        onClick={() => setSelectedTicket(item)}
-                        className="p-1 px-3 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 rounded-lg transition-colors border border-slate-200 inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold"
-                      >
-                        <Eye className="h-4 w-4 text-slate-400" />
-                        <span>Ver</span>
-                      </button>
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          id={`btn-open-ticket-${item.id}`}
+                          onClick={() => setSelectedTicket(item)}
+                          className="p-1 px-3 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 rounded-lg transition-colors border border-slate-200 inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold"
+                        >
+                          <Eye className="h-4 w-4 text-slate-400" />
+                          <span>Ver</span>
+                        </button>
+                        {onDeleteAsistencia && (
+                          <button
+                            id={`btn-delete-ticket-${item.id}`}
+                            onClick={() => setDeletingTicketId(item.id)}
+                            className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 hover:text-rose-700 rounded-lg transition-all border border-rose-100 inline-flex items-center cursor-pointer"
+                            title="Eliminar asistencia"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -324,7 +349,7 @@ export default function TicketsTable({ asistencias, motorizados }: TicketsTableP
 
             {/* Modal Heading */}
             <div className="border-b border-slate-100 pb-4 pr-10">
-              <span className="text-[10px] font-mono tracking-widest text-blue-600 uppercase bg-blue-50 px-2 py-0.5 rounded border border-blue-100/30">
+              <span className="text-[10px] font-mono tracking-widest text-amber-700 uppercase bg-amber-50 px-2 py-0.5 rounded border border-amber-200/50">
                 Auditoría Contable de Asistencia Vial
               </span>
               <h3 className="text-xl font-bold text-slate-900 font-sans mt-2">
@@ -340,7 +365,7 @@ export default function TicketsTable({ asistencias, motorizados }: TicketsTableP
               
               {/* Primary client details metadata (col 1) */}
               <div className="space-y-4">
-                <h4 className="text-xs uppercase font-mono tracking-wider text-blue-600 font-bold flex items-center gap-2">
+                <h4 className="text-xs uppercase font-mono tracking-wider text-amber-600 font-bold flex items-center gap-2">
                   <FileText className="h-4 w-4" /> DATOS DEL TICKET
                 </h4>
 
@@ -355,7 +380,7 @@ export default function TicketsTable({ asistencias, motorizados }: TicketsTableP
                   </div>
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-slate-500">Factura Asistencial:</span>
-                    <span className="font-mono font-semibold text-blue-600">{selectedTicket.numero_factura}</span>
+                    <span className="font-mono font-semibold text-amber-600">{selectedTicket.numero_factura}</span>
                   </div>
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-slate-500">Teléfono:</span>
@@ -367,7 +392,7 @@ export default function TicketsTable({ asistencias, motorizados }: TicketsTableP
                   </div>
                 </div>
 
-                <h4 className="text-xs uppercase font-mono tracking-wider text-blue-600 font-bold flex items-center gap-2">
+                <h4 className="text-xs uppercase font-mono tracking-wider text-amber-600 font-bold flex items-center gap-2">
                   <Briefcase className="h-4 w-4" /> ASIGNACIÓN OPERATIVA
                 </h4>
 
@@ -394,7 +419,7 @@ export default function TicketsTable({ asistencias, motorizados }: TicketsTableP
               {/* Descriptions & Balance details (col 2) */}
               <div className="space-y-4">
                 
-                <h4 className="text-xs uppercase font-mono tracking-wider text-blue-600 font-bold flex items-center gap-2">
+                <h4 className="text-xs uppercase font-mono tracking-wider text-amber-600 font-bold flex items-center gap-2">
                   <DollarSign className="h-4 w-4" /> BALANCES FINANCIEROS
                 </h4>
 
@@ -410,11 +435,11 @@ export default function TicketsTable({ asistencias, motorizados }: TicketsTableP
                   <hr className="border-slate-200" />
                   <div className="flex justify-between items-center text-sm font-bold">
                     <span className="text-slate-800">Total General:</span>
-                    <span className="font-mono text-blue-600 font-extrabold text-base">B/. {selectedTicket.total.toFixed(2)}</span>
+                    <span className="font-mono text-amber-600 font-extrabold text-base">B/. {selectedTicket.total.toFixed(2)}</span>
                   </div>
                 </div>
 
-                <h4 className="text-xs uppercase font-mono tracking-wider text-blue-600 font-bold flex items-center gap-2">
+                <h4 className="text-xs uppercase font-mono tracking-wider text-amber-600 font-bold flex items-center gap-2">
                   <Clock className="h-4 w-4" /> DETALLE DE SERVICIO
                 </h4>
 
@@ -446,6 +471,18 @@ export default function TicketsTable({ asistencias, motorizados }: TicketsTableP
             </div>
 
             <div className="mt-6 flex justify-end gap-3 border-t border-slate-100 pt-4">
+              {onDeleteAsistencia && (
+                <button
+                  id="btn-delete-ticket-modal"
+                  type="button"
+                  onClick={() => {
+                    setDeletingTicketId(selectedTicket.id);
+                  }}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer mr-auto"
+                >
+                  Eliminar Ticket
+                </button>
+              )}
               <button
                 id="btn-print-audit"
                 onClick={() => window.print()}
@@ -456,12 +493,56 @@ export default function TicketsTable({ asistencias, motorizados }: TicketsTableP
               <button
                 id="btn-archive-close"
                 onClick={() => setSelectedTicket(null)}
-                className="px-4 py-2 bg-blue-600 text-white font-bold hover:bg-blue-700 text-xs rounded-xl transition-colors cursor-pointer"
+                className="px-4 py-2 bg-navi-900 hover:bg-navi-800 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer"
               >
                 Cerrar Auditoría
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOM REACTION-BASED DELETE CONFIRMATION DIALOG */}
+      {deletingTicketId && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 shadow-2xl relative my-8 text-slate-800">
+            <div className="flex gap-4 items-start">
+              <div className="bg-rose-50 text-rose-600 p-3 rounded-full border border-rose-100 shrink-0">
+                <Trash2 className="h-6 w-6" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-base font-bold text-slate-950 font-sans">
+                  ¿Eliminar Ticket Permanentemente?
+                </h4>
+                <p className="text-xs text-slate-500 leading-relaxed font-sans">
+                  Esta acción es irreversible y borrará de inmediato el ticket <span className="font-bold text-slate-700 font-mono">{deletingTicketId}</span> de la base de datos de Firestore. Las estadísticas asociadas al conductor se recalcularán en tiempo real.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3 border-t border-slate-100 pt-4">
+              <button
+                id="btn-confirm-delete-cancel"
+                onClick={() => setDeletingTicketId(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                id="btn-confirm-delete-execute"
+                onClick={() => {
+                  if (onDeleteAsistencia) {
+                    onDeleteAsistencia(deletingTicketId);
+                  }
+                  setDeletingTicketId(null);
+                  setSelectedTicket(null); // close detail modal if indeed it was open
+                }}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-md shadow-rose-600/10 active:scale-95 transition-all cursor-pointer"
+              >
+                Eliminar Registro
+              </button>
+            </div>
           </div>
         </div>
       )}

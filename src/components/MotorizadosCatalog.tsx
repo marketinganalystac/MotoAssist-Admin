@@ -92,7 +92,7 @@ export default function MotorizadosCatalog({ motorizados, onAddMotorizado }: Mot
         <button
           id="btn-add-motorizado-show"
           onClick={() => setShowAddModal(true)}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 transition-all cursor-pointer shadow-sm shadow-blue-500/10"
+          className="px-4 py-2 bg-navi-900 hover:bg-navi-800 text-white font-bold rounded-xl text-xs flex items-center gap-2 transition-all cursor-pointer shadow-sm shadow-amber-500/5 animate-fade-in"
         >
           <PlusCircle className="h-4.5 w-4.5" />
           <span>Registrar Nuevo Conductor</span>
@@ -102,7 +102,7 @@ export default function MotorizadosCatalog({ motorizados, onAddMotorizado }: Mot
       {/* DRIVERS GRID WITH STATISTICS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {motorizados.map(item => (
-          <div key={item.id} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:border-slate-350 hover:shadow-md transition-all space-y-4">
+          <div key={item.id} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:border-amber-350 hover:shadow-md transition-all space-y-4">
             
             {/* NAME / STATE INDICATOR */}
             <div className="flex justify-between items-start border-b border-slate-100 pb-3">
@@ -143,7 +143,7 @@ export default function MotorizadosCatalog({ motorizados, onAddMotorizado }: Mot
 
               <div className="bg-slate-50 p-2 rounded-xl border border-slate-100">
                 <span className="text-[9px] uppercase font-bold text-slate-400 block">Prom. diario</span>
-                <span className="text-xs font-extrabold text-blue-600 mt-0.5 block">B/. {item.promedio_diario.toFixed(2)}</span>
+                <span className="text-xs font-extrabold text-amber-600 mt-0.5 block">B/. {item.promedio_diario.toFixed(2)}</span>
               </div>
             </div>
 
@@ -171,7 +171,7 @@ export default function MotorizadosCatalog({ motorizados, onAddMotorizado }: Mot
             </button>
 
             <div className="border-b border-slate-100 pb-3 mb-4">
-              <h4 className="text-base font-bold text-slate-900 font-sans">
+              <h4 className="text-base font-bold text-slate-950 font-sans">
                 Registrar Nuevo Operador
               </h4>
               <p className="text-xs text-slate-500 font-sans">
@@ -193,7 +193,7 @@ export default function MotorizadosCatalog({ motorizados, onAddMotorizado }: Mot
                   type="text"
                   value={newNombre}
                   onChange={(e) => setNewNombre(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 text-slate-800 px-3.5 py-2.5 rounded-xl text-xs focus:bg-white focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600 font-sans"
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-800 px-3.5 py-2.5 rounded-xl text-xs focus:bg-white focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 font-sans"
                   placeholder="Ej. Roberto Martínez"
                   required
                 />
@@ -205,7 +205,7 @@ export default function MotorizadosCatalog({ motorizados, onAddMotorizado }: Mot
                   type="text"
                   value={newTelefono}
                   onChange={(e) => setNewTelefono(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 text-slate-800 px-3.5 py-2.5 rounded-xl text-xs focus:bg-white focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600 font-sans"
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-800 px-3.5 py-2.5 rounded-xl text-xs focus:bg-white focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 font-sans"
                   placeholder="Ej. +507 6220-4139"
                   required
                 />
@@ -217,7 +217,7 @@ export default function MotorizadosCatalog({ motorizados, onAddMotorizado }: Mot
                   <select
                     value={newEstado}
                     onChange={(e) => setNewEstado(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-800 px-3.5 py-2.5 rounded-xl text-xs focus:bg-white focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-800 px-3.5 py-2.5 rounded-xl text-xs focus:bg-white focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                   >
                     <option value="Activo">Activo</option>
                     <option value="Inactivo">Inactivo</option>
@@ -230,7 +230,7 @@ export default function MotorizadosCatalog({ motorizados, onAddMotorizado }: Mot
                     type="date"
                     value={newFecha}
                     onChange={(e) => setNewFecha(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3 py-2.5 rounded-xl text-xs focus:bg-white focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600 font-mono"
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3 py-2.5 rounded-xl text-xs focus:bg-white focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
                   />
                 </div>
               </div>
@@ -247,7 +247,7 @@ export default function MotorizadosCatalog({ motorizados, onAddMotorizado }: Mot
                 <button
                   id="btn-add-motorizado-confirm"
                   type="submit"
-                  className="w-1/2 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 text-xs text-center transition-all cursor-pointer"
+                  className="w-1/2 py-2.5 bg-navi-900 text-white font-bold rounded-xl hover:bg-navi-800 text-xs text-center transition-all cursor-pointer"
                 >
                   Guardar Conductor
                 </button>

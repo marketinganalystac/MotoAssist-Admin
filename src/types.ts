@@ -28,6 +28,8 @@ export interface Asistencia {
   total: number;
   estado: string; // "Completado" | "Pendiente"
   motorizado_id: string;
+  descripcion_servicio?: string;
+  descripcion_producto?: string;
   imagen_original: string; // base64 string or URI
   imagen_procesada: string; // base64 string or URI
   ocr_json: any; // Complete JSON response

@@ -96,7 +96,7 @@ export default function Dashboard({ asistencias, motorizados }: DashboardProps) 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         
         {/* Hoy */}
-        <div className="bg-white border border-slate-200 p-5 rounded-2xl flex items-center justify-between shadow-sm hover:shadow-md hover:border-blue-300 transition-all">
+        <div className="bg-white border border-slate-200 p-5 rounded-2xl flex items-center justify-between shadow-sm hover:shadow-md hover:border-amber-350 transition-all">
           <div className="space-y-1">
             <span className="text-xs text-slate-500 font-bold block">Asistencias Hoy</span>
             <span className="text-3xl font-extrabold font-sans text-slate-900 block">{stats.asistenciasHoy}</span>
@@ -110,13 +110,13 @@ export default function Dashboard({ asistencias, motorizados }: DashboardProps) 
         </div>
 
         {/* Semana */}
-        <div className="bg-white border border-slate-200 p-5 rounded-2xl flex items-center justify-between shadow-sm hover:shadow-md hover:border-blue-350 transition-all">
+        <div className="bg-white border border-slate-200 p-5 rounded-2xl flex items-center justify-between shadow-sm hover:shadow-md hover:border-amber-350 transition-all">
           <div className="space-y-1">
             <span className="text-xs text-slate-500 font-bold block">Esta Semana</span>
             <span className="text-3xl font-extrabold font-sans text-slate-900 block">{stats.asistenciasSemana}</span>
-            <span className="text-[10px] text-blue-600 font-bold block">Acumulado 7 d</span>
+            <span className="text-[10px] text-navi-800 font-bold block">Acumulado 7 d</span>
           </div>
-          <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+          <div className="p-3 bg-amber-50 text-amber-500 rounded-xl">
             <TrendingUp className="h-6 w-6" />
           </div>
         </div>
@@ -183,8 +183,8 @@ export default function Dashboard({ asistencias, motorizados }: DashboardProps) 
             <svg viewBox="0 0 500 200" className="w-full h-full overflow-visible">
               <defs>
                 <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#2563eb" stopOpacity="0.15" />
-                  <stop offset="100%" stopColor="#2563eb" stopOpacity="0.0" />
+                  <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.15" />
+                  <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.0" />
                 </linearGradient>
               </defs>
 
@@ -221,8 +221,8 @@ export default function Dashboard({ asistencias, motorizados }: DashboardProps) 
                     {/* Shadow Area */}
                     {areaPath && <path d={areaPath} fill="url(#chartGradient)" />}
                     
-                    {/* Blue Line */}
-                    {linePath && <path d={linePath} fill="none" stroke="#2563eb" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />}
+                    {/* Amber Line */}
+                    {linePath && <path d={linePath} fill="none" stroke="#f59e0b" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />}
 
                     {/* Circles on trend points */}
                     {points.map((p, idx) => (
@@ -237,7 +237,7 @@ export default function Dashboard({ asistencias, motorizados }: DashboardProps) 
                           cy={p.y} 
                           r={hoveredIndex === idx ? 7 : 4} 
                           fill="#ffffff" 
-                          stroke="#2563eb" 
+                          stroke="#f59e0b" 
                           strokeWidth="2.5" 
                           className="transition-all duration-150"
                         />
@@ -268,7 +268,7 @@ export default function Dashboard({ asistencias, motorizados }: DashboardProps) 
                             <text x={p.x} y={p.y - 32} fill="#ffffff" textAnchor="middle" className="text-[8.5px] font-sans font-bold">
                               B/. {p.val.toFixed(2)}
                             </text>
-                            <text x={p.x} y={p.y - 20} fill="#60a5fa" textAnchor="middle" className="text-[7.5px] font-mono">
+                            <text x={p.x} y={p.y - 20} fill="#f59e0b" textAnchor="middle" className="text-[7.5px] font-mono">
                               {p.count} asists.
                             </text>
                           </g>
@@ -286,9 +286,9 @@ export default function Dashboard({ asistencias, motorizados }: DashboardProps) 
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <Users className="h-4.5 w-4.5 text-blue-600" />
+              <Users className="h-4.5 w-4.5 text-amber-500" />
               <h3 className="text-base font-bold text-slate-900 font-sans">
-                Top Conductores
+                Top Conductoras y Conductores
               </h3>
             </div>
             <p className="text-xs text-slate-500 font-sans mb-4">
@@ -320,7 +320,7 @@ export default function Dashboard({ asistencias, motorizados }: DashboardProps) 
                       <div 
                         style={{ width: `${pct}%` }} 
                         className={`h-full rounded-full transition-all duration-1000 ${
-                          i === 0 ? 'bg-blue-600' : i === 1 ? 'bg-blue-500' : 'bg-slate-300'
+                          i === 0 ? 'bg-navi-900' : i === 1 ? 'bg-amber-500' : 'bg-slate-300'
                         }`}
                       />
                     </div>
@@ -365,7 +365,7 @@ export default function Dashboard({ asistencias, motorizados }: DashboardProps) 
                 <span className="text-[11px] text-slate-500 font-bold block">{metodo}</span>
                 <span className="text-xl font-extrabold text-slate-900 block mt-1">{count} <span className="text-xs font-normal text-slate-400">tickets</span></span>
                 <div className="w-full bg-slate-200 h-1 rounded-full mt-2.5">
-                  <div style={{ width: `${pct}%` }} className="bg-blue-600 h-full rounded-full" />
+                  <div style={{ width: `${pct}%` }} className="bg-navi-800 h-full rounded-full" />
                 </div>
               </div>
             );

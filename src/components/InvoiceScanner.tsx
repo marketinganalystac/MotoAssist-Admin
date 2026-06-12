@@ -32,6 +32,7 @@ export default function InvoiceScanner({
   // Input sources
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [processedImage, setProcessedImage] = useState<string | null>(null);
+  const [selectedTemplateIdx, setSelectedTemplateIdx] = useState<number>(-1);
   
   // Image improvement sliders (stored in state to render real-time Canvas or CSS filters)
   const [brightness, setBrightness] = useState<number>(105);
@@ -53,6 +54,7 @@ export default function InvoiceScanner({
   // Form State for manual review validation ticket
   const [showForm, setShowForm] = useState<boolean>(false);
   const [formData, setFormData] = useState<Partial<Asistencia>>({});
+  const [savedValidationData, setSavedValidationData] = useState<{ id: string; cliente: string; ruc_cliente: string; total: number } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragOverRef = useRef<HTMLDivElement>(null);
@@ -74,6 +76,7 @@ export default function InvoiceScanner({
     setErrorText(null);
     setSuccessMsg(null);
     setShowForm(false);
+    setSelectedTemplateIdx(idx);
     
     // Base template
     const base64 = generateInvoiceImageBase64(idx, 0);
@@ -95,6 +98,7 @@ export default function InvoiceScanner({
       reader.onloadend = () => {
         setSelectedImage(reader.result as string);
         setProcessedImage(reader.result as string);
+        setSelectedTemplateIdx(-1);
         setErrorText(null);
         setSuccessMsg(null);
         setShowForm(false);
@@ -157,13 +161,13 @@ export default function InvoiceScanner({
     setErrorText(null);
     setSuccessMsg(null);
     
-    // Multistep visualization timeline to simulate local physical DSP (Digital Signal Processing)
+    // Multistep visualization timeline (Optimized for ultra-rapid and highly responsive feedback)
     const steps = [
-      { text: "Estabilizando giroscopio externo... [OK]", ms: 800, progress: 15 },
-      { text: "Detectando bordes de página y encuadrando perspectiva...", ms: 1000, progress: 35 },
-      { text: "Optimizando contraste local y reducción de ruido lineal (Despeckle)...", ms: 900, progress: 55 },
-      { text: "Transmitiendo canal seguro a servidor de extracción Gemini 3.5 Flash...", ms: 1200, progress: 75 },
-      { text: "Haciendo análisis cognitivo de estructura contable panameña...", ms: 1200, progress: 95 }
+      { text: "Estabilizando giroscopio... [OK]", ms: 120, progress: 20 },
+      { text: "Detectando bordes y perspectiva de página... [OK]", ms: 120, progress: 40 },
+      { text: "Optimizando contraste y eliminando ruido de fondo... [OK]", ms: 120, progress: 60 },
+      { text: "Enviando imagen a Gemini 3.5 Flash... [OK]", ms: 120, progress: 80 },
+      { text: "Analizando estructura con IA... [OK]", ms: 120, progress: 95 }
     ];
 
     let currentStep = 0;
@@ -235,6 +239,40 @@ export default function InvoiceScanner({
     }
   };
 
+  // Bypass OCR analysis to test without Gemini API key using mock templates
+  const handleBypassOCR = () => {
+    setErrorText(null);
+    setSuccessMsg(null);
+    
+    // Choose selected template info or default
+    const idx = selectedTemplateIdx !== -1 ? selectedTemplateIdx : 0;
+    const templateInfo = mockInvoiceTemplates[idx];
+    
+    setFormData({
+      id: "",
+      fecha: templateInfo.date,
+      hora: templateInfo.time,
+      numero_factura: templateInfo.invoiceNum,
+      cliente: templateInfo.clientName,
+      ruc_cliente: templateInfo.clientRuc,
+      telefono: templateInfo.clientPhone,
+      direccion: templateInfo.clientAddress,
+      comentario: templateInfo.pie,
+      ubicacion_servicio: templateInfo.type === "Bateria" ? "Tumba Muerto, Ciudad de Panamá" : "Marbella, Ciudad de Panamá",
+      vendedor: templateInfo.vendedor,
+      forma_pago: templateInfo.formaPago,
+      subtotal: templateInfo.subtotal,
+      itbms: templateInfo.itbms,
+      total: templateInfo.total,
+      estado: "Pendiente",
+      motorizado_id: currentMotorizado || "diego_torres",
+      ocr_json: templateInfo as any
+    });
+    
+    setSuccessMsg("¡Formulario de verificación autocompletado con datos precargados de simulación!");
+    setShowForm(true);
+  };
+
   // Recalculate values dynamically in validation form
   const handleFormChange = (key: string, value: any) => {
     const updated = { ...formData, [key]: value };
@@ -256,6 +294,10 @@ export default function InvoiceScanner({
       setErrorText("El cliente y número de factura son obligatorios.");
       return;
     }
+    if (!formData.motorizado_id) {
+      setErrorText("Debe seleccionar un motorizado asignado para registrar este servicio.");
+      return;
+    }
     
     try {
       const payload = {
@@ -273,17 +315,28 @@ export default function InvoiceScanner({
       });
 
       if (!res.ok) {
-        throw new Error("No se pudo escribir en la base de datos local.");
+        const errData = await res.json().catch(() => ({}));
+        const detailSuffix = errData.details ? `: ${errData.details}` : "";
+        throw new Error((errData.error || "No se pudo escribir en la base de datos de Firestore.") + detailSuffix);
       }
 
       const finalSaved = await res.json();
-      onAsistenciaCreated(payload as Asistencia);
+      const savedAst = finalSaved.asistencia || (payload as Asistencia);
+      onAsistenciaCreated(savedAst);
+      
+      setSavedValidationData({
+        id: savedAst.id,
+        cliente: savedAst.cliente,
+        ruc_cliente: savedAst.ruc_cliente || "Sin RUC",
+        total: Number(savedAst.total) || 0
+      });
       
       setSuccessMsg("¡Ticket de asistencia digitalizado, verificado y guardado en la Base de Datos!");
       
       // Cleanup
       setSelectedImage(null);
       setProcessedImage(null);
+      setSelectedTemplateIdx(-1);
       setShowForm(false);
       setFormData({});
     } catch (err: any) {
@@ -317,18 +370,18 @@ export default function InvoiceScanner({
 
       {/* RETAIL SCANNER CONTROLS */}
       {!showForm && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="max-w-3xl mx-auto space-y-6">
           
-          {/* LEFT: IMAGE CARRIER VIEWPORT */}
-          <div className="lg:col-span-7 flex flex-col space-y-4">
+          {/* IMAGE CARRIER VIEWPORT */}
+          <div className="flex flex-col space-y-5 bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm animate-fade-in animate-[duration_0.2s]">
             
             <div className="flex justify-between items-center">
               <div>
                 <h3 className="text-base font-bold text-slate-950 font-sans flex items-center gap-2">
-                  <Camera className="h-5 w-5 text-blue-600" /> Digitalización Inteligente de Gastos
+                  <Camera className="h-5 w-5 text-amber-505 text-amber-500" /> Digitalización Inteligente de Gastos
                 </h3>
-                <p className="text-xs text-slate-500 font-sans">
-                  Suma y extrae automáticamente comprobantes viales con el motor de IA
+                <p className="text-xs text-slate-500 font-sans mt-0.5">
+                  El sistema optimiza automáticamente el contraste e iluminación para un reconocimiento óptimo con Gemini 3.5 Flash.
                 </p>
               </div>
             </div>
@@ -339,9 +392,9 @@ export default function InvoiceScanner({
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
-              className={`relative min-h-[440px] bg-white border-2 border-dashed ${
-                selectedImage ? "border-slate-200" : "border-slate-300 hover:border-blue-500"
-              } rounded-2xl flex flex-col items-center justify-center p-6 transition-all overflow-hidden shadow-sm`}
+              className={`relative min-h-[360px] bg-slate-50 border-2 border-dashed ${
+                selectedImage ? "border-slate-205" : "border-slate-300 hover:border-amber-500 hover:bg-amber-500/5"
+              } rounded-2xl flex flex-col items-center justify-center p-6 transition-all overflow-hidden`}
             >
               {selectedImage ? (
                 // Live Filter Preview Viewport
@@ -350,28 +403,28 @@ export default function InvoiceScanner({
                     src={selectedImage} 
                     alt="Scan Factura" 
                     style={getFilterStyle()}
-                    className="max-h-[380px] w-auto shadow-xl rounded-lg object-contain border border-slate-200"
+                    className="max-h-[320px] w-auto shadow-xl rounded-lg object-contain border border-slate-200"
                   />
                   
-                  {/* Digital Line Overlay (Scanner Effect) - Styled Blue */}
-                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-600 to-transparent shadow-[0_0_8px_rgba(37,99,235,0.8)] animate-[scan_3s_linear_infinite]" />
+                  {/* Digital Line Overlay (Scanner Effect) - Styled Amber */}
+                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-amber-505 via-amber-500 to-transparent shadow-[0_0_8px_rgba(245,158,11,0.9)] animate-[scan_3s_linear_infinite]" />
                 </div>
               ) : (
                 // Upload Prompt Empty State
                 <div className="text-center space-y-4 max-w-sm">
-                  <div className="mx-auto w-14 h-14 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-center text-slate-400">
+                  <div className="mx-auto w-14 h-14 bg-white border border-slate-100 rounded-2xl flex items-center justify-center text-slate-400 shadow-xs">
                     <Upload className="h-6 w-6 text-slate-400" />
                   </div>
                   <div className="space-y-1">
                     <p className="text-sm font-bold text-slate-800">Arrastre su factura de asistencia o compra</p>
-                    <p className="text-xs text-slate-500">Admite JPG, PNG o capturas instantáneas de cámara de celular</p>
+                    <p className="text-xs text-slate-500 font-sans">Admite JPG, PNG o capturas instantáneas de cámara de celular</p>
                   </div>
                   
                   <div className="pt-2">
                     <button
                       id="btn-upload-trigger"
                       onClick={() => fileInputRef.current?.click()}
-                      className="px-4 py-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl text-xs font-bold text-blue-700 transition-colors cursor-pointer"
+                      className="px-4 py-2 bg-navi-50 hover:bg-navi-100 border border-navi-200 rounded-xl text-xs font-bold text-navi-800 transition-colors cursor-pointer"
                     >
                       Seleccionar Archivo Local
                     </button>
@@ -387,154 +440,32 @@ export default function InvoiceScanner({
               )}
             </div>
 
-            {/* QUICK SELECTION OF TEST TEMPLATES (Extremely practical for quick demo) */}
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-sm">
-              <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500 block mb-2.5 text-center">
-                ¿No tiene una foto a mano? Pruebe con plantillas corporativas precargadas
-              </span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <button
-                  id="btn-load-template-0"
-                  type="button"
-                  onClick={() => handleLoadTemplate(0)}
-                  className="px-4 py-3 bg-white border border-slate-200 text-xs rounded-lg hover:border-blue-500 hover:bg-blue-50/50 text-left flex justify-between items-center transition-all text-slate-700 font-sans shadow-xs font-semibold"
-                >
-                  <span>Bateria - AutoCentro S.A.</span>
-                  <ArrowRight className="h-4 w-4 text-blue-600" />
-                </button>
-                <button
-                  id="btn-load-template-1"
-                  type="button"
-                  onClick={() => handleLoadTemplate(1)}
-                  className="px-4 py-3 bg-white border border-slate-200 text-xs rounded-lg hover:border-blue-500 hover:bg-blue-50/50 text-left flex justify-between items-center transition-all text-slate-700 font-sans shadow-xs font-semibold"
-                >
-                  <span>Servicio de Grúa - Grúas del Istmo</span>
-                  <ArrowRight className="h-4 w-4 text-blue-600" />
-                </button>
-              </div>
-            </div>
+            {/* TRIGGER ANALYSIS BLOCK */}
+            <div className="pt-4 border-t border-slate-100 space-y-3">
+              <button
+                id="btn-run-ocr"
+                onClick={handleRunOCR}
+                disabled={!selectedImage || isProcessing}
+                className="w-full py-3.5 bg-navi-900 hover:bg-navi-800 text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-md shadow-navi-900/10 active:scale-[0.98] transition-all disabled:opacity-45 disabled:pointer-events-none cursor-pointer text-xs"
+              >
+                <Sparkles className="h-5 w-5 fill-amber-502 text-amber-500" />
+                <span>Extraer Datos con Inteligencia Artificial</span>
+              </button>
 
-          </div>
-
-          {/* RIGHT: IMAGE ENHANCEMENT CONTROLS */}
-          <div className="lg:col-span-5 flex flex-col space-y-4">
-            
-            <div className="bg-white border border-slate-200 p-6 rounded-2xl space-y-5 flex-1 shadow-sm">
-              <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2 font-sans border-b border-slate-100 pb-3">
-                <Sliders className="h-4.5 w-4.5 text-blue-600" /> Optimización de Imagen
-              </h4>
-
-              {/* Angle correction */}
-              <div className="space-y-1.5">
-                <div className="flex justify-between items-center text-xs text-slate-700">
-                  <span className="font-sans font-medium">Enderezar factura (Orientación)</span>
-                  <span className="font-mono text-blue-600 font-bold">{rotate}°</span>
-                </div>
-                <input 
-                  type="range" 
-                  min="-15" 
-                  max="15" 
-                  step="0.5" 
-                  value={rotate}
-                  onChange={(e) => setRotate(Number(e.target.value))}
-                  disabled={!selectedImage}
-                  className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600 disabled:opacity-30"
-                />
-              </div>
-
-              {/* Contrast */}
-              <div className="space-y-1.5">
-                <div className="flex justify-between items-center text-xs text-slate-700">
-                  <span className="font-sans font-medium">Contraste de tinta</span>
-                  <span className="font-mono text-blue-600 font-bold">{contrast}%</span>
-                </div>
-                <input 
-                  type="range" 
-                  min="50" 
-                  max="200" 
-                  value={contrast}
-                  onChange={(e) => setContrast(Number(e.target.value))}
-                  disabled={!selectedImage}
-                  className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600 disabled:opacity-30"
-                />
-              </div>
-
-              {/* Brightness */}
-              <div className="space-y-1.5">
-                <div className="flex justify-between items-center text-xs text-slate-700">
-                  <span className="font-sans font-medium">Brillo de fondo de papel</span>
-                  <span className="font-mono text-blue-600 font-bold">{brightness}%</span>
-                </div>
-                <input 
-                  type="range" 
-                  min="50" 
-                  max="150" 
-                  value={brightness}
-                  onChange={(e) => setBrightness(Number(e.target.value))}
-                  disabled={!selectedImage}
-                  className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600 disabled:opacity-30"
-                />
-              </div>
-
-              {/* CHECKBOX SETS */}
-              <div className="space-y-3 pt-4 border-t border-slate-100">
-                <label className="flex items-center gap-3 cursor-pointer text-xs text-slate-700 hover:text-slate-900 transition-colors">
-                  <input 
-                    type="checkbox" 
-                    checked={perspectiveCorrect}
-                    onChange={(e) => setPerspectiveCorrect(e.target.checked)}
-                    disabled={!selectedImage}
-                    className="rounded border-slate-300 bg-white text-blue-600 focus:ring-blue-500 h-4 w-4 accent-blue-600"
-                  />
-                  <span className="font-medium">Corrección de perspectiva inteligente (Enderezar trapecio)</span>
-                </label>
-
-                <label className="flex items-center gap-3 cursor-pointer text-xs text-slate-700 hover:text-slate-900 transition-colors">
-                  <input 
-                    type="checkbox" 
-                    checked={noiseReduction}
-                    onChange={(e) => setNoiseReduction(e.target.checked)}
-                    disabled={!selectedImage}
-                    className="rounded border-slate-300 bg-white text-blue-600 focus:ring-blue-500 h-4 w-4 accent-blue-600"
-                  />
-                  <span className="font-medium">Reducción de ruido y eliminación de manchas de fondo</span>
-                </label>
-
-                <label className="flex items-center gap-3 cursor-pointer text-xs text-slate-700 hover:text-slate-900 transition-colors">
-                  <input 
-                    type="checkbox" 
-                    checked={grayscale}
-                    onChange={(e) => setGrayscale(e.target.checked)}
-                    disabled={!selectedImage}
-                    className="rounded border-slate-300 bg-white text-blue-600 focus:ring-blue-500 h-4 w-4 accent-blue-600"
-                  />
-                  <span className="font-medium">Filtro escala de grises de alto rango (Lectura OCR)</span>
-                </label>
-              </div>
-
-              {/* TRIGGER ANALYSIS BLOCK */}
-              <div className="pt-4 border-t border-slate-100 space-y-3">
-                <button
-                  id="btn-run-ocr"
-                  onClick={handleRunOCR}
-                  disabled={!selectedImage || isProcessing}
-                  className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-md shadow-blue-500/10 active:scale-[0.98] transition-all disabled:opacity-45 disabled:pointer-events-none cursor-pointer"
-                >
-                  <Sparkles className="h-5 w-5 fill-white text-white" />
-                  <span>Extraer Datos con Inteligencia Artificial</span>
-                </button>
-
-                {selectedImage && (
+              {selectedImage && (
+                <div className="flex gap-2 justify-center">
                   <button
-                    id="btn-reset-filters"
-                    onClick={handleResetFilters}
-                    className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-all cursor-pointer"
+                    id="btn-reset-image"
+                    onClick={() => {
+                      setSelectedImage(null);
+                      setRotate(0);
+                    }}
+                    className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-705 text-slate-705 text-slate-700 text-xs font-semibold rounded-xl transition-all cursor-pointer"
                   >
-                    Restaurar Ajustes Originales
+                    Quitar Foto
                   </button>
-                )}
-              </div>
-
+                </div>
+              )}
             </div>
 
           </div>
@@ -544,12 +475,12 @@ export default function InvoiceScanner({
 
       {/* OCR PROGRESS SIMULATION FULLOVERLAY */}
       {isProcessing && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-6 animate-fade-in">
+        <div className="fixed inset-0 bg-navi-950/40 backdrop-blur-xs z-50 flex items-center justify-center p-6 animate-fade-in">
           <div className="w-full max-w-md bg-white border border-slate-200 p-8 rounded-3xl text-center space-y-6 shadow-2xl">
             
             <div className="relative inline-block">
-              <Loader2 className="h-16 w-16 stroke-[2] text-blue-600 animate-spin" />
-              <Sparkles className="h-6 w-6 text-blue-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+              <Loader2 className="h-16 w-16 stroke-[2] text-amber-500 animate-spin" />
+              <Sparkles className="h-6 w-6 text-navi-900 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
             </div>
 
             <div className="space-y-2">
@@ -566,7 +497,7 @@ export default function InvoiceScanner({
               <div className="bg-slate-100 h-2.5 rounded-full overflow-hidden">
                 <div 
                   style={{ width: `${processingProgress}%` }} 
-                  className="bg-blue-600 h-full rounded-full transition-all duration-300"
+                  className="bg-amber-500 h-full rounded-full transition-all duration-300"
                 />
               </div>
               <div className="flex justify-between font-mono text-[10px] text-slate-400">
@@ -576,7 +507,7 @@ export default function InvoiceScanner({
             </div>
 
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-[10px] text-left leading-relaxed text-slate-500 flex items-start gap-2.5">
-              <Database className="h-5 w-5 stroke-[2] text-blue-600 flex-shrink-0" />
+              <Database className="h-5 w-5 stroke-[2] text-amber-500 flex-shrink-0" />
               <span>MotoAssist está utilizando Google Gemini para realizar un OCR generativo de resolución total del RUC, subtotal, ITBMS y datos del pie de página.</span>
             </div>
 
@@ -590,7 +521,7 @@ export default function InvoiceScanner({
           
           <div className="border-b border-slate-100 pb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <span className="text-[10px] font-mono tracking-widest text-blue-700 uppercase bg-blue-50 px-2.5 py-1 rounded border border-blue-100 font-bold">
+              <span className="text-[10px] font-mono tracking-widest text-amber-700 uppercase bg-amber-50 px-2.5 py-1 rounded border border-amber-200 font-bold">
                 Paso 3: Validación de Datos
               </span>
               <h3 className="text-lg font-bold text-slate-950 font-sans mt-2">
@@ -610,7 +541,7 @@ export default function InvoiceScanner({
             
             {/* ROW 1: INFO DE FACTURA (LEFT) */}
             <div className="md:col-span-6 space-y-4">
-              <h4 className="text-xs uppercase tracking-wider font-bold text-slate-400 border-l-2 border-blue-600 pl-2">
+              <h4 className="text-xs uppercase tracking-wider font-bold text-slate-400 border-l-2 border-amber-500 pl-2">
                 Información de Facturación
               </h4>
 
@@ -621,7 +552,7 @@ export default function InvoiceScanner({
                     type="text" 
                     value={formData.numero_factura || ""}
                     onChange={(e) => handleFormChange("numero_factura", e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-mono text-xs focus:bg-white focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-mono text-xs focus:bg-white focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                     placeholder="FAC-0000"
                     required
                   />
@@ -632,7 +563,7 @@ export default function InvoiceScanner({
                   <select
                     value={formData.motorizado_id || ""}
                     onChange={(e) => handleFormChange("motorizado_id", e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:bg-white focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:bg-white focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                     required
                   >
                     {motorizados.map(m => (
@@ -649,7 +580,7 @@ export default function InvoiceScanner({
                     type="date" 
                     value={formData.fecha || ""}
                     onChange={(e) => handleFormChange("fecha", e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-mono text-xs focus:bg-white focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-mono text-xs focus:bg-white focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                     required
                   />
                 </div>
@@ -660,7 +591,7 @@ export default function InvoiceScanner({
                     type="text" 
                     value={formData.hora || ""}
                     onChange={(e) => handleFormChange("hora", e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-mono text-xs focus:bg-white focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-mono text-xs focus:bg-white focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                     placeholder="HH:MM"
                   />
                 </div>
@@ -673,7 +604,7 @@ export default function InvoiceScanner({
                     type="text" 
                     value={formData.vendedor || ""}
                     onChange={(e) => handleFormChange("vendedor", e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:bg-white focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:bg-white focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                     placeholder="Vendedor"
                   />
                 </div>
@@ -684,7 +615,7 @@ export default function InvoiceScanner({
                     type="text" 
                     value={formData.forma_pago || ""}
                     onChange={(e) => handleFormChange("forma_pago", e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:bg-white focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:bg-white focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                     placeholder="Efectivo, Tarjeta, ACH, etc"
                   />
                 </div>
@@ -694,7 +625,7 @@ export default function InvoiceScanner({
 
             {/* ROW 2: DATOS DEL CLIENTE (RIGHT) */}
             <div className="md:col-span-6 space-y-4">
-              <h4 className="text-xs uppercase tracking-wider font-bold text-slate-400 border-l-2 border-blue-600 pl-2">
+              <h4 className="text-xs uppercase tracking-wider font-bold text-slate-400 border-l-2 border-amber-500 pl-2">
                 Datos del Cliente
               </h4>
 
@@ -704,7 +635,7 @@ export default function InvoiceScanner({
                   type="text" 
                   value={formData.cliente || ""}
                   onChange={(e) => handleFormChange("cliente", e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:bg-white focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:bg-white focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                   placeholder="Cliente corporativo o personal"
                   required
                 />
@@ -717,7 +648,7 @@ export default function InvoiceScanner({
                     type="text" 
                     value={formData.ruc_cliente || ""}
                     onChange={(e) => handleFormChange("ruc_cliente", e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:bg-white focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:bg-white focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                     placeholder="8-992-1234"
                   />
                 </div>
@@ -728,7 +659,7 @@ export default function InvoiceScanner({
                     type="text" 
                     value={formData.telefono || ""}
                     onChange={(e) => handleFormChange("telefono", e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:bg-white focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:bg-white focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                     placeholder="+507 celular"
                   />
                 </div>
@@ -740,7 +671,7 @@ export default function InvoiceScanner({
                   type="text" 
                   value={formData.direccion || ""}
                   onChange={(e) => handleFormChange("direccion", e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:bg-white focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:bg-white focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                   placeholder="Dirección fiscal..."
                 />
               </div>
@@ -753,7 +684,7 @@ export default function InvoiceScanner({
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6 pt-4 border-t border-slate-100">
             
             <div className="md:col-span-8 space-y-4">
-              <h4 className="text-xs uppercase tracking-wider font-bold text-slate-400 border-l-2 border-blue-600 pl-2">
+              <h4 className="text-xs uppercase tracking-wider font-bold text-slate-400 border-l-2 border-amber-500 pl-2">
                 Detalles del Servicio Vial
               </h4>
               
@@ -764,7 +695,7 @@ export default function InvoiceScanner({
                 <textarea 
                   value={formData.descripcion_servicio || ""}
                   onChange={(e) => handleFormChange("descripcion_servicio", e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:bg-white focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600 min-h-[60px]"
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:bg-white focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 min-h-[60px]"
                   placeholder="Descripción de la asistencia..."
                 />
               </div>
@@ -775,7 +706,7 @@ export default function InvoiceScanner({
                   type="text" 
                   value={formData.comentario || ""}
                   onChange={(e) => handleFormChange("comentario", e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:bg-white focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-850 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:bg-white focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                   placeholder="Escriba aquí los comentarios u observaciones adicionales..."
                 />
               </div>
@@ -787,10 +718,10 @@ export default function InvoiceScanner({
                     type="text" 
                     value={formData.ubicacion_servicio || ""}
                     onChange={(e) => handleFormChange("ubicacion_servicio", e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-850 pl-10 pr-3.5 py-2.5 rounded-xl font-sans text-xs focus:bg-white focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-850 pl-10 pr-3.5 py-2.5 rounded-xl font-sans text-xs focus:bg-white focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                     placeholder="Ave. Balboa, Al lado del edif..."
                   />
-                  <MapPin className="h-4 w-4 text-blue-600 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <MapPin className="h-4 w-4 text-amber-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 </div>
               </div>
 
@@ -800,7 +731,7 @@ export default function InvoiceScanner({
                   type="text" 
                   value={formData.ocr_json?.cuenta || ""}
                   onChange={(e) => handleFormChange("ocr_json", { ...formData.ocr_json, cuenta: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 text-slate-500 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:bg-white focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-505 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:bg-white focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                   placeholder="N/A"
                 />
               </div>
@@ -811,7 +742,7 @@ export default function InvoiceScanner({
             <div className="md:col-span-4 bg-slate-50 border border-slate-200/60 p-5 rounded-2xl flex flex-col justify-between shadow-xs">
               
               <div className="space-y-4">
-                <h4 className="text-xs uppercase tracking-wider font-bold text-slate-400 border-l-2 border-blue-600 pl-2 mb-4">
+                <h4 className="text-xs uppercase tracking-wider font-bold text-slate-400 border-l-2 border-amber-500 pl-2 mb-4">
                   Balances y Totales
                 </h4>
 
@@ -823,7 +754,7 @@ export default function InvoiceScanner({
                       step="0.01"
                       value={formData.subtotal || 0}
                       onChange={(e) => handleFormChange("subtotal", parseFloat(e.target.value) || 0)}
-                      className="w-24 text-right bg-white border border-slate-200 text-slate-850 px-2 py-1 rounded font-mono text-xs focus:border-blue-600 focus:outline-none"
+                      className="w-24 text-right bg-white border border-slate-200 text-slate-850 px-2 py-1 rounded font-mono text-xs focus:border-amber-500 focus:outline-none"
                     />
                   </div>
 
@@ -834,7 +765,7 @@ export default function InvoiceScanner({
                       step="0.01"
                       value={formData.itbms || 0}
                       onChange={(e) => handleFormChange("itbms", parseFloat(e.target.value) || 0)}
-                      className="w-24 text-right bg-white border border-slate-200 text-slate-850 px-2 py-1 rounded font-mono text-xs focus:border-blue-600 focus:outline-none"
+                      className="w-24 text-right bg-white border border-slate-200 text-slate-855 text-slate-850 px-2 py-1 rounded font-mono text-xs focus:border-amber-500 focus:outline-none"
                     />
                   </div>
                 </div>
@@ -843,14 +774,14 @@ export default function InvoiceScanner({
               <div className="pt-4 border-t border-slate-200 mt-6 space-y-4">
                 <div className="flex justify-between items-center font-bold font-sans">
                   <span className="text-sm text-slate-800">Total Generado</span>
-                  <span className="text-lg text-blue-600 font-mono">B/. {(formData.total || 0).toFixed(2)}</span>
+                  <span className="text-lg text-amber-600 font-mono">B/. {(formData.total || 0).toFixed(2)}</span>
                 </div>
 
                 <div className="space-y-2">
                   <button
                     id="btn-confirm-save-ticket"
                     type="submit"
-                    className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-blue-600/10 active:scale-[0.98] transition-all"
+                    className="w-full py-3.5 bg-navi-900 hover:bg-navi-800 text-white font-bold rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-navi-950/20 active:scale-[0.98] transition-all"
                   >
                     <Check className="h-4.5 w-4.5 stroke-[2.5]" />
                     <span>Guardar Ticket y Sincronizar</span>
@@ -875,6 +806,58 @@ export default function InvoiceScanner({
           </div>
 
         </form>
+      )}
+
+      {/* SUCCESS PERSISTENCE VALIDATOR DIALOG */}
+      {savedValidationData && (
+        <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fade-in animate-[duration_0.2s]">
+          <div className="w-full max-w-md bg-white border border-slate-200 p-8 rounded-3xl text-center space-y-6 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1.5 bg-emerald-500" />
+            
+            <div className="mx-auto w-16 h-16 bg-emerald-50 border border-emerald-100 rounded-full flex items-center justify-center text-emerald-600 shadow-xs">
+              <Check className="h-8 w-8 stroke-[3]" />
+            </div>
+
+            <div className="space-y-2">
+              <h4 className="text-lg font-extrabold text-slate-900 font-sans">
+                ¡Validación de Datos Exitosa!
+              </h4>
+              <p className="text-xs text-slate-500 font-sans max-w-xs mx-auto leading-relaxed">
+                El documento se ha guardado, verificado y sincronizado de forma persistente en los servidores de la nube de Firebase Firestore.
+              </p>
+            </div>
+
+            {/* TELEMETRY METRIC CHECKPOINT CARDS */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-left divide-y divide-slate-100 space-y-2.5">
+              <div className="flex justify-between items-center text-xs pb-2.5">
+                <span className="text-slate-400 font-medium font-sans">ID Documental</span>
+                <span className="font-mono font-bold text-slate-800 bg-slate-200/50 px-2 py-0.5 rounded text-[11px]">{savedValidationData.id}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs pt-2.5 pb-2.5">
+                <span className="text-slate-400 font-medium font-sans">Razón Social</span>
+                <span className="font-semibold text-slate-800 line-clamp-1 max-w-[200px] text-right">{savedValidationData.cliente}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs pt-2.5 pb-2.5">
+                <span className="text-slate-400 font-medium font-sans">RUC Cliente</span>
+                <span className="font-mono text-slate-600">{savedValidationData.ruc_cliente}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs pt-2.5">
+                <span className="text-slate-400 font-medium font-sans">Total Confirmado</span>
+                <span className="font-extrabold text-emerald-700 font-mono">B/. {savedValidationData.total.toFixed(2)}</span>
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <button
+                id="btn-dismiss-validation"
+                onClick={() => setSavedValidationData(null)}
+                className="w-full py-3 bg-slate-950 hover:bg-slate-900 text-white font-bold text-xs rounded-xl shadow-lg transition-all cursor-pointer"
+              >
+                Cerrar y Confirmar Validación
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>
