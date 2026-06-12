@@ -700,18 +700,19 @@ async function callGoogleGemini(
   responseSchema?: any,
   responseMimeType?: string
 ) {
-  const isAccessToken = apiKey.startsWith("AQ.") || apiKey.startsWith("ya29.");
-  const url = isAccessToken
-    ? `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
-    : `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  // ya29. = OAuth 2.0 access token (Bearer). AQ. y AIzaSy = API keys (x-goog-api-key).
+  const isOAuthToken = apiKey.startsWith("ya29.");
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "User-Agent": "aistudio-build",
   };
 
-  if (isAccessToken) {
+  if (isOAuthToken) {
     headers["Authorization"] = `Bearer ${apiKey}`;
+  } else {
+    headers["x-goog-api-key"] = apiKey;
   }
 
   const payload: any = {
