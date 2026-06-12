@@ -779,31 +779,31 @@ export default function App() {
                         </p>
                       </div>
                     ) : typedApiKey.startsWith("AQ.") ? (
-                      <div className="text-rose-400 flex items-start gap-1.5 border border-rose-500/20 p-1.5 rounded-lg bg-rose-500/5">
-                        <span className="shrink-0 text-amber-500">❌</span>
+                      <div className="text-emerald-400 flex items-start gap-1.5 border border-emerald-500/20 p-1.5 rounded-lg bg-emerald-500/5">
+                        <span className="shrink-0">✨</span>
                         <p>
-                          <strong>Formato de token AQ incorrecto.</strong> Las claves que comienzan con <code>AQ.</code> no son claves API de Gemini válidas. Las claves de Google Gemini siempre comienzan con <code>AIzaSy</code> y tienen exactamente 39 caracteres de largo. Copia la clave exclusivamente haciendo clic en <strong>"Create API Key"</strong> o <strong>"Get API Key"</strong> en Google AI Studio (<i>aistudio.google.com</i>).
+                          <strong>¡Auth Key de Google Detectada!</strong> Las claves con prefijo <code>AQ.</code> son el nuevo formato de autenticación de Google AI Studio (a partir de 2026). Son totalmente compatibles. Pulsa <strong>"Probar Conexión ⭐"</strong> para verificarla.
                         </p>
                       </div>
                     ) : !typedApiKey.trim().startsWith("AIzaSy") ? (
                       <div className="text-amber-400 flex items-start gap-1.5">
                         <span className="shrink-0 text-amber-500">⚠️</span>
                         <p>
-                          <strong>Formato inusual de clave.</strong> Las claves válidas de Google Gemini comienzan típicamente con los caracteres <code>AIzaSy</code>. Si copiaste la clave de otro proveedor, no será válida.
+                          <strong>Formato inusual de clave.</strong> Las claves de Google Gemini comienzan con <code>AIzaSy</code> (formato clásico) o <code>AQ.</code> (nuevo formato auth key). Si copiaste la clave de otro proveedor, no será válida.
                         </p>
                       </div>
                     ) : typedApiKey.trim().length !== 39 ? (
                       <div className="text-slate-300 flex items-start gap-1.5">
                         <span className="shrink-0 text-emerald-400">ℹ️</span>
                         <p>
-                          Longitud de clave: {typedApiKey.length} caracteres. Las claves estándar de Gemini suelen tener exactamente 39 caracteres de largo.
+                          Longitud de clave: {typedApiKey.length} caracteres. Las claves estándar de Gemini (AIzaSy) tienen 39 caracteres.
                         </p>
                       </div>
                     ) : (
                       <div className="text-emerald-400 flex items-start gap-1.5">
                         <span className="shrink-0 text-emerald-400">✨</span>
                         <p>
-                          <strong>¡Estructura Correcta!</strong> Tu clave cumple con el formato estándar de Google (39 caracteres y comienza con AIzaSy). Pulsa <strong>&quot;Probar Conexión ⭐&quot;</strong> para verificarla en tiempo real.
+                          <strong>¡Estructura Correcta!</strong> Tu clave cumple con el formato estándar de Google (39 caracteres, comienza con AIzaSy). Pulsa <strong>&quot;Probar Conexión ⭐&quot;</strong> para verificarla en tiempo real.
                         </p>
                       </div>
                     )}
